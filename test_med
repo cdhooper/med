@@ -1,0 +1,183 @@
+#!/bin/bash -p
+
+C=./med
+TMPFILE=/tmp/med_test1
+
+function do_test
+{
+    EXP="$1"
+    shift
+    OUT=$($C $*)
+    ((TESTS++))
+    if [[ "$EXP" == "$OUT" ]]; then
+        echo "PASS: $*"
+    else
+        ((FAILS++))
+        echo "FAIL: $*"
+        echo "Expected:"
+        echo "    $EXP"
+        echo "Got:"
+        echo "    $OUT"
+        echo "Run again:"
+        $C $* | sed -e 's/^/    /'
+    fi
+}
+
+#if false; then ## DEBUG
+
+FAILS=0
+echo "***** Simple math"
+do_test "-5"                   "echo -5"
+do_test "x-5"                  "echo x-5"
+do_test "x/5"                  "echo x/5"
+do_test "1"                    "echo !0"
+do_test "0"                    "echo !1"
+do_test "5"                    "echo ~fffffffffffffffa"
+do_test "a"                    "echo 7+3"
+do_test "15"                   "echo 7*3"
+do_test "2"                    "echo 8/3"
+do_test "ffffffffffffffff"     "echo 5/0"
+do_test "1"                    "echo 7%3"
+do_test "4"                    "echo 7-3"
+do_test "fffffffffffffffb"     "echo 0-5"
+
+echo "***** Comparison operators"
+do_test "0"                    "echo 3<2"
+do_test "1"                    "echo 2<3"
+do_test "0"                    "echo 3<3"
+do_test "1"                    "echo 3<=3"
+do_test "0"                    "echo 3<=2"
+do_test "1"                    "echo 2<=3"
+do_test "1"                    "echo 3>2"
+do_test "0"                    "echo 2>3"
+do_test "0"                    "echo 2>2"
+do_test "1"                    "echo 2>=2"
+do_test "1"                    "echo 3>=2"
+do_test "0"                    "echo 2>=3"
+do_test "0"                    "echo 2==3"
+do_test "1"                    "echo 2==2"
+do_test "0"                    "echo 2!=2"
+do_test "1"                    "echo 2!=3"
+
+echo "***** Binary math"
+do_test "11"                   "echo 15&33"
+do_test "17"                   "echo 5|13"
+do_test "16"                   "echo 5^13"
+do_test "4"                    "echo 10>>2"
+do_test "48"                   "echo 12<<2"
+do_test "a"                    "echo ~5&f"
+
+echo "***** Logical operations"
+do_test "1"                    "echo 1&&1"
+do_test "0"                    "echo 1&&0"
+do_test "0"                    "echo 0&&1"
+do_test "0"                    "echo 0&&0"
+do_test "1"                    "echo 0||1"
+do_test "1"                    "echo 1||0"
+do_test "0"                    "echo 0||0"
+do_test "1"                    "echo 1||1"
+
+echo "***** Order of operations"
+do_test "6"                    "echo (2*3)"
+do_test "7"                    "echo (1+2*3)"   # should get 7, not 9
+do_test "9"                    "echo ((1+2)*3)" # should get 9, not 7
+do_test "5"                    "echo 5%(1/2)"   # should get 5, not 0
+do_test "5"                    "echo 5+1/2"     # should get 5, not 3
+do_test "b"                    "echo 5+3*2"     # should get b, not 10
+do_test "0"                    "echo 5/(3*2)"   # should get 0, not 2
+do_test "2"                    "echo 5/3*2"     # should get 2, not 0
+do_test "8"                    "echo 4%5*2"     # should get 8, not 4
+do_test "6"                    "echo 4%5+2"     # should get 6, not 4
+do_test "6"                    "echo 4+2|4"     # should get 6, not 10
+do_test "6"                    "echo 4|2+4"     # should get 6, not 10
+do_test "7"                    "echo 4-1|4"     # should get 7, not -1
+do_test "7"                    "echo 4|4-1"     # should get 7, not 3
+do_test "0"                    "echo 1&1-1"     # should get 0, not -1
+do_test "0"                    "echo 1&&1-1"    # should get 0, not -1
+do_test "3"                    "echo 1|4-1"     # should get 3, not 4
+do_test "3"                    "echo 1|1+1"     # should get 3, not 1
+do_test "1"                    "echo 1||1+1"    # should get 1, not 3
+do_test "0"                    "echo 3>1+2"     # should get 0, not 3
+do_test "0"                    "echo 3>2*2"     # should get 0, not 2
+do_test "1"                    "echo 2*2>3"     # should get 1, not 2
+do_test "1"                    "echo 1>1<1"     # should get 0, not 1
+do_test "0"                    "echo 2==2<2"    # should get 0, not 1
+
+# Test command length manipulation due to expression evaluation
+echo "***** Command length manipulation"
+do_test "fffffffffffffffa"     echo ~5
+do_test "Y 0 Z"                echo 'Y ~ffffffffffffffff Z'
+do_test "Y0Z"                  echo 'Y~ffffffffffffffffZ'
+do_test "YfffffffffffffffeZ"   echo 'Y~1Z'
+do_test "Y fffffffffffffffe Z" echo 'Y ~1 Z'
+
+echo "***** Command separators"
+do_test "$(echo -e 'one\ntwo')"                   "echo one ; echo two"
+do_test "$(echo -e 'one\ntwo')"                   "echo one; echo two"
+do_test "$(echo -e 'one\ntwo')"                   "echo one ;echo two"
+do_test "$(echo -e 'one\ntwo')"                   "echo one;echo two"
+do_test "$(echo -e 'one\ntwo\nthree')"            "echo one;echo two;echo three"
+do_test "one & two"                               "echo one & two"
+do_test "$(echo -e 'one\ntwo')"                   "echo one && echo two"
+do_test "$(echo -e 'one\nUnknown command: two')"  "echo one && two"
+do_test "1"                                       "echo 1 && 2"
+do_test "0"                                       "echo 1 && 0"
+do_test "1"                                       "echo 1 || 2"
+do_test "1"                                       "echo 0 || 1"
+do_test "one"                                     "echo one || two"
+do_test "$(echo -e 'Unknown command: one\ntwo')"  "one || echo two"
+
+echo "***** ignore command"
+do_test "$(echo -e 'Unknown command: one\ntwo')"  "ignore one && echo two"
+do_test "Unknown command: one"                    "ignore one || echo two"
+
+echo "***** loop command"
+do_test "$(echo -e 'one\none')"                   "loop 2 echo one"
+do_test ""                                        "loop 0 echo one"
+do_test ""                                        "loop -1 echo one"
+do_test "Unknown command: one"                    "loop 4 one"
+do_test "$(echo -e 'Unknown command: one\ntwo')"  "loop 4 one; echo two"
+do_test "Unknown command: one"                    "loop 4 one && echo two"
+do_test "$(echo -e 'Unknown command: one\ntwo')"  "loop 4 one || echo two"
+do_test "$(echo -e 'Unknown command: one\nUnknown command: one')"       "loop 2 ignore one"
+do_test "$(echo -e 'Unknown command: one\nUnknown command: one\ntwo')"  "loop 2 ignore one && echo two"
+do_test "$(echo -e 'one\none\ntwo\nthree')"       'loop 2 echo one; echo two; echo three'
+do_test "$(echo -e 'one\ntwo\none\ntwo\nthree')"  'loop 2 echo "one; echo two"; echo three'
+do_test "$(echo -e 'one\ntwo\none\ntwo\nthree')"  'loop 2 "\"echo one; echo two\""; echo three'
+do_test "$(echo -e '00\n11')"                     'loop 2 echo $a$a'
+do_test "$(echo -e '0\n2')"                       'loop 2 echo $a*2'
+do_test "$(echo -e '200\n202')"                   'loop 2 echo 10$a*2'
+
+
+echo "***** help command"
+do_test "quit - exit program"    "help quit"
+do_test 'Unknown command "NOT"'  "help NOT"
+
+echo "***** history command"
+do_test ""                       "history"
+# Unfortunately, history command requires a tty before it records commands
+
+# Test "d" command with file access
+echo "***** d command"
+echo "bla BLA12345678abcdefghijklmnopq" > $TMPFILE
+do_test "$TMPFILE:0000: 62 6c 61 20                                     bla "  "db file:$TMPFILE:0 4"
+do_test "$TMPFILE:0000: 6c62 2061                               bla "    "dw file:$TMPFILE:0 4"
+do_test "$TMPFILE:0000: 20616c62                            bla "     "dl file:$TMPFILE:0 4"
+do_test "$TMPFILE:0000: 20616c62                            bla "     "d file:$TMPFILE:0 4"
+do_test "$TMPFILE:0000: 626c6120                            bla "     "dS file:$TMPFILE:0 4"
+do_test "$TMPFILE:0000: 31414c4220616c62                  bla BLA1"  "dq file:$TMPFILE:0 4"
+do_test "$TMPFILE:0000: 613837363534333231414c4220616c62 bla BLA12345678a"  "do file:$TMPFILE:0 1"
+do_test "$TMPFILE:0000: 71706f6e6d6c6b6a6968676665646362613837363534333231414c4220616c62 bla BLA12345678abcdefghijklmnopq"  "dh file:$TMPFILE:0 1"
+
+echo "***** patt command"
+do_test "01020408 10204080 01020408 10204080" "pattb file:$TMPFILE:0 10 walk1 ; drS file:$TMPFILE:0 10"
+do_test "01 00 02 00 04 00 08 00 10 00 20 00 40 00 80 00 00 01 00 02 00 04 00 08 00 10 00 20 00 40 00 80" "pattw file:$TMPFILE:0 20 walk1 ; drb file:$TMPFILE:0 20"
+do_test "00 01 00 02 00 04 00 08 00 10 00 20 00 40 00 80 01 00 02 00 04 00 08 00 10 00 20 00 40 00 80 00" "pattwS file:$TMPFILE:0 20 walk1 ; drb file:$TMPFILE:0 20"
+do_test "00 00 00 01 00 00 00 02 00 00 00 04 00 00 00 08 00 00 00 10 00 00 00 20 00 00 00 40 00 00 00 80 00 00 01 00 00 00 02 00 00 00 04 00 00 00 08 00 00 00 10 00 00 00 20 00 00 00 40 00 00 00 80 00 00 01 00 00 00 02 00 00 00 04 00 00 00 08 00 00 00 10 00 00 00 20 00 00 00 40 00 00 00 80 00 00 01 00 00 00 02 00 00 00 04 00 00 00 08 00 00 00 10 00 00 00 20 00 00 00 40 00 00 00 80 00 00 00" "pattlS file:$TMPFILE:0 80 walk1 ; drb file:$TMPFILE:0 80"
+do_test "01 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 08 00 00 00 00 00 00 00 10 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 08 00 00 00 00 00 00 00 10 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 08 00 00 00 00 00 00 00 10 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 08 00 00 00 00 00 00 00 10 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 08 00 00 00 00 00 00 00 10 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 08 00 00 00 00 00 00 00 10 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 08 00 00 00 00 00 00 00 10 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 80 00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00 02 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00 08 00 00 00 00 00 00 00 10 00 00 00 00 00 00 00 20 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 80" "pattlq file:$TMPFILE:0 200 walk1 ; drb file:$TMPFILE:0 200"
+
+
+#fi  # DEBUG
+echo "Ran $TESTS tests. $FAILS failed."
+
+rm -f $TMPFILE
