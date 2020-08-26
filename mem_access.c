@@ -1,3 +1,14 @@
+/*
+ * This is free and unencumbered software released into the public domain.
+ * See the LICENSE file for additional details.
+ *
+ * Designed by Chris Hooper in August 2020.
+ *
+ * ---------------------------------------------------------------------
+ *
+ * Generic physical memory access code.
+ */
+
 #ifdef EMBEDDED_CMD
 #include "printf.h"
 #endif
@@ -6,9 +17,9 @@
 
 #if defined(AMIGA)
 /* 68000 Can not handle unaligned access */
-bool_t no_unaligned_access = TRUE;
+const bool_t no_unaligned_access = TRUE;
 #else
-bool_t no_unaligned_access = FALSE;
+const bool_t no_unaligned_access = FALSE;
 #endif
 
 uint8_t mem_fault_ok    = 0;
@@ -17,7 +28,7 @@ uint    mem_fault_count = 0;
 rc_t
 mem_read(uint64_t addr, uint width, void *bufp)
 {
-    char *buf = (char *) bufp;
+    uint8_t *buf = (uint8_t *) bufp;
     uint mode = width;
     if (mode > 8)
         mode = 8;
@@ -42,7 +53,7 @@ mem_read(uint64_t addr, uint width, void *bufp)
             case 1:
 rmode_1:
                 mode = 1;
-                *(uint8_t *)buf = *(uint8_t *)addr;
+                *buf = *(uint8_t *)addr;
                 break;
             case 2:
             case 3:
@@ -87,7 +98,7 @@ rmode_4:
 rc_t
 mem_write(uint64_t addr, uint width, void *bufp)
 {
-    char *buf = (char *) bufp;
+    uint8_t *buf = (uint8_t *) bufp;
     uint mode = width;
     if (mode > 8)
         mode = 8;
@@ -111,7 +122,7 @@ mem_write(uint64_t addr, uint width, void *bufp)
                 return (RC_FAILURE);
             case 1:
 wmode_1:
-                *(uint8_t *)addr = *(uint8_t *)buf;
+                *(uint8_t *)addr = *buf;
                 break;
             case 2:
             case 3:

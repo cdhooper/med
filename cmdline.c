@@ -1,3 +1,14 @@
+/*
+ * This is free and unencumbered software released into the public domain.
+ * See the LICENSE file for additional details.
+ *
+ * Designed by Chris Hooper in August 2020.
+ *
+ * ---------------------------------------------------------------------
+ *
+ * Command line interpreter.
+ */
+
 #ifdef EMBEDDED_CMD
 #include "printf.h"
 #include "uart.h"
@@ -59,9 +70,9 @@ static const cmd_t cmd_list[] = {
                         " [erase|id|read|write|... ",
                         "perform flash operation" },
 #endif
-    { cmd_time,    "time",    2, cmd_time_help, "cmd <cmd>",
-                        " measure command execution time" },
-    { cmd_version, "version", 1, NULL, "show version" },
+    { cmd_time,    "time",    2, cmd_time_help, " cmd <cmd>",
+                        "measure command execution time" },
+    { cmd_version, "version", 1, NULL, "", "show version" },
 };
 
 static rc_t
@@ -852,21 +863,21 @@ no_whitespace(char *line)
 }
 
 #ifdef EMBEDDED_CMD
-void
+int
 cmdline(void)
 {
     char *line;
 
-    (void) get_new_input_line("\rCMD> ", &line);
+    (void) get_new_input_line("CMD> ", &line);
     if (line != NULL) {
         HIST_ENTRY *hist_cur;
         char *sline = no_whitespace(line);
         if (sline[0] == '\0')
-            return;
+            return (0);
 
         if ((strcmp(sline, "q") == 0) || (strcmp(sline, "quit") == 0)) {
             *line = '\0';
-            return;
+            return (0);
         }
 
         HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);

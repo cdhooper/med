@@ -1,3 +1,14 @@
+/*
+ * This is free and unencumbered software released into the public domain.
+ * See the LICENSE file for additional details.
+ *
+ * Designed by Chris Hooper in August 2020.
+ *
+ * ---------------------------------------------------------------------
+ *
+ * Command line handling.
+ */
+
 #ifndef _CMDS_H
 #define _CMDS_H
 

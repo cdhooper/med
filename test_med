@@ -1,6 +1,6 @@
 #!/bin/bash -p
 
-C=./med
+C=objs/med
 TMPFILE=/tmp/med_test1
 
 function do_test

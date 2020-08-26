@@ -1,3 +1,14 @@
+/*
+ * This is free and unencumbered software released into the public domain.
+ * See the LICENSE file for additional details.
+ *
+ * Designed by Chris Hooper in August 2020.
+ *
+ * ---------------------------------------------------------------------
+ *
+ * Command line handling.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -1378,7 +1389,7 @@ show_patterns:
 rc_t
 cmd_version(int argc, char * const *argv)
 {
-    printf("Version "VERSION" built "BUILD_DATE" "BUILD_TIME"\n");
+    printf("%s\n", version_str);
     return (RC_SUCCESS);
 }
 
@@ -1608,10 +1619,8 @@ cmd_flash(int argc, char * const *argv)
     }
 
 report_success:
-    if (rc == 0)
-        printf("\rSUCCESS\n");
-    else
-        printf("\rFAILURE %d\n", rc);
+    if (rc != 0)
+        printf("FAILURE %d\n", rc);
     return (rc);
 }
 #endif
