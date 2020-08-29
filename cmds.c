@@ -27,9 +27,11 @@
 #include "version.h"
 
 #ifdef EMBEDDED_CMD
-#include "flash_access.h"
+#include "pcmds.h"
+#include "prom_access.h"
 #include <stdbool.h>
 #include "timer.h"
+#include "uart.h"
 #else
 #include "sfile.h"
 #endif
@@ -38,6 +40,17 @@
 #define IS_BIG_ENDIAN
 #define BUILD_DATE __DATE__
 #define BUILD_TIME __TIME__
+#endif
+
+#ifndef EMBEDDED_CMD
+static int
+input_break_pending(void)
+{
+#ifdef AMIGA
+    chkabort();  /* Handle ^C */
+#endif
+    return (0);
+}
 #endif
 
 #define MAX_TRANSFER 128
@@ -110,24 +123,13 @@ const char cmd_test_help[] =
 const char cmd_test_patterns[] =
     "<mode> may be one, zero, walk0, or walk1\n";
 
-#ifdef EMBEDDED_CMD
-const char cmd_flash_help[] =
-"flash cmd <cmd> [<addr>] - send a 16-bit command to the flash chip\n"
-"flash id                 - report flash chip vendor and id\n"
-"flash disable            - disable and power off flash\n"
-"flash erase chip|<addr>  - erase entire flash chip or 256K sector\n"
-"flash read <addr> <len>  - read binary data from flash (to terminal)\n"
-"flash status             - display flash status\n"
-"flash write <addr> <len> - write binary data to flash (from terminal)\n";
-#endif
-
 const char cmd_time_help[] =
 "time cmd <cmd> - measure command execution time\n";
 
 #define SPACE_OFFSET 0
 #define SPACE_MEMORY 1
 #define SPACE_FILE   2
-#define SPACE_FLASH  3
+#define SPACE_PROM   3
 
 rc_t
 data_read(uint64_t space, uint64_t addr, uint width, void *buf)
@@ -135,10 +137,11 @@ data_read(uint64_t space, uint64_t addr, uint width, void *buf)
     switch ((uint8_t) space) {
         case SPACE_MEMORY:
             return (mem_read(addr, width, buf));
-#ifdef EMBEDDED_CMD
-        case SPACE_FLASH:
-            return (flash_read((uint32_t)addr, width, buf));
-#else
+#ifdef HAVE_SPACE_PROM
+        case SPACE_PROM:
+            return (prom_read((uint32_t)addr, width, buf));
+#endif
+#ifdef HAVE_SPACE_FILE
         case SPACE_FILE:
             return (file_read(space, addr, width, buf));
 #endif
@@ -154,10 +157,11 @@ data_write(uint64_t space, uint64_t addr, uint width, void *buf)
     switch ((uint8_t) space) {
         case SPACE_MEMORY:
             return (mem_write(addr, width, buf));
-#ifdef EMBEDDED_CMD
-        case SPACE_FLASH:
-            return (flash_write((uint32_t)addr, width, buf));
-#else
+#ifdef HAVE_SPACE_PROM
+        case SPACE_PROM:
+            return (prom_write((uint32_t)addr, width, buf));
+#endif
+#ifdef HAVE_SPACE_FILE
         case SPACE_FILE:
             return (file_write(space, addr, width, buf));
 #endif
@@ -182,11 +186,12 @@ print_addr(uint64_t space, uint64_t addr)
             printf("%0*llx", awidth, (long long)addr);
             break;
         }
-#ifdef EMBEDDED_CMD
-        case SPACE_FLASH:
+#ifdef HAVE_SPACE_PROM
+        case SPACE_PROM:
             printf("%06x", (int)addr);
             break;
-#else
+#endif
+#ifdef HAVE_SPACE_FILE
         case SPACE_FILE: {
             int awidth = 16;
             uint slot = (uint8_t) (space >> 8);
@@ -203,7 +208,7 @@ print_addr(uint64_t space, uint64_t addr)
     }
 }
 
-#ifndef EMBEDDED_CMD
+#ifdef HAVE_SPACE_FILE
 static int
 space_add_filename(uint64_t *space, const char *name)
 {
@@ -238,9 +243,9 @@ parse_addr(char * const **arg, int *argc, uint64_t *space, uint64_t *addr)
     }
     *space = SPACE_MEMORY;  /* Default */
 
-#ifdef EMBEDDED_CMD
-    if (strncmp(argp, "flash", 5) == 0) {
-        *space = SPACE_FLASH;
+#ifdef HAVE_SPACE_PROM
+    if (strncmp(argp, "prom", 5) == 0) {
+        *space = SPACE_PROM;
         if (strchr(argp, ':') != NULL) {
             argp += 6;
         } else {
@@ -253,7 +258,8 @@ parse_addr(char * const **arg, int *argc, uint64_t *space, uint64_t *addr)
             argp = **arg;
         }
     }
-#else
+#endif
+#ifdef HAVE_SPACE_FILE
     if (strncmp(argp, "file", 4) == 0) {
         int len;
         *space = SPACE_FILE;
@@ -608,9 +614,10 @@ cmd_comp(int argc, char * const *argv)
                 printf("\n");
             }
         }
-#ifdef AMIGA
-        chkabort();  /* Handle ^C */
-#endif
+        if (input_break_pending()) {
+            printf("^C\n");
+            return (RC_USR_ABORT);
+        }
     }
     if (mismatch_count > 0) {
         printf("%d mismatches\n", mismatch_count);
@@ -674,9 +681,10 @@ cmd_copy(int argc, char * const *argv)
             printf("\n");
             return (rc);
         }
-#ifdef AMIGA
-        chkabort();  /* Handle ^C */
-#endif
+        if (input_break_pending()) {
+            printf("^C\n");
+            return (RC_USR_ABORT);
+        }
     }
     return (RC_SUCCESS);
 }
@@ -816,9 +824,10 @@ cmd_d(int argc, char * const *argv)
             return (rc);
         }
         if (flag_N) {
-#ifdef AMIGA
-            chkabort();  /* Handle ^C */
-#endif
+            if (input_break_pending()) {
+                printf("^C\n");
+                return (RC_USR_ABORT);
+            }
             continue;  /* Don't print -- just fetch */
         }
 
@@ -986,9 +995,10 @@ cmd_loop(int argc, char * const *argv)
                 rc = RC_FAILURE;
             goto finish;
         }
-#ifdef AMIGA
-        chkabort();  /* Handle ^C */
-#endif
+        if (input_break_pending()) {
+            printf("^C\n");
+            return (RC_USR_ABORT);
+        }
     }
 finish:
     free(cmdline);
@@ -1086,17 +1096,19 @@ cmd_delay(int argc, char * const *argv)
         case 2:  /* hours */
             for (count = 0; count < 3600; count++) {
                 sleep(value);
-#ifdef AMIGA
-                chkabort();  /* Handle ^C */
-#endif
+                if (input_break_pending()) {
+                    printf("^C\n");
+                    return (RC_USR_ABORT);
+                }
             }
             break;
         case 1:  /* minutes */
             for (count = 0; count < 60; count++) {
                 sleep(value);
-#ifdef AMIGA
-                chkabort();  /* Handle ^C */
-#endif
+                if (input_break_pending()) {
+                    printf("^C\n");
+                    return (RC_USR_ABORT);
+                }
             }
             break;
         case 0:  /* seconds */
@@ -1106,9 +1118,10 @@ cmd_delay(int argc, char * const *argv)
             while (value > 1000) {
                 sleep(1);
                 value -= 1000;
-#ifdef AMIGA
-                chkabort();  /* Handle ^C */
-#endif
+                if (input_break_pending()) {
+                    printf("^C\n");
+                    return (RC_USR_ABORT);
+                }
             }
             usleep(value * 1000);
             break;
@@ -1284,9 +1297,10 @@ show_patterns:
             return (rc);
         }
         step++;
-#ifdef AMIGA
-        chkabort();  /* Handle ^C */
-#endif
+        if (input_break_pending()) {
+            printf("^C\n");
+            return (RC_USR_ABORT);
+        }
     }
     return (RC_SUCCESS);
 }
@@ -1379,9 +1393,10 @@ show_patterns:
             return (rc);
         }
         (void) testmode;
-#ifdef AMIGA
-        chkabort();  /* Handle ^C */
-#endif
+        if (input_break_pending()) {
+            printf("^C\n");
+            return (RC_USR_ABORT);
+        }
     }
     return (RC_SUCCESS);
 }
@@ -1394,6 +1409,7 @@ cmd_version(int argc, char * const *argv)
 }
 
 #ifdef AMIGA
+// XXX: this should go in cmds_amiga.c
 #include <time.h>
 #include <clib/timer_protos.h>
 #define TICKS_PER_MINUTE (TICKS_PER_SECOND * 60)
@@ -1445,31 +1461,8 @@ cmd_time(int argc, char * const *argv)
 
     return (rc);
 }
-#elif defined(EMBEDDED_CMD)
-rc_t
-cmd_time(int argc, char * const *argv)
-{
-    uint64_t time_start;
-    uint64_t time_diff;
-    rc_t     rc;
-
-    if ((argc <= 2) || (strcmp(argv[1], "cmd") != 0)) {
-        printf("error: time command requires cmd and command to execute\n");
-        return (RC_USER_HELP);
-    }
-    argv += 2;
-    argc -= 2;
-
-    time_start = timer_tick_get();
-    rc = cmd_exec_argv(argc, argv);
-    time_diff = timer_tick_get() - time_start;
-    printf("%lld us\n", timer_tick_to_usec(time_diff));
-    if (rc == RC_USER_HELP)
-        rc = RC_FAILURE;
-
-    return (rc);
-}
-#else /* UNIX */
+#elif !defined(EMBEDDED_CMD)  /* UNIX */
+// XXX: this should go in cmds_unix.c
 #include <sys/time.h>
 
 static uint64_t
@@ -1508,119 +1501,6 @@ cmd_time(int argc, char * const *argv)
     if (rc == RC_USER_HELP)
         rc = RC_FAILURE;
 
-    return (rc);
-}
-#endif
-
-#ifdef EMBEDDED_CMD
-rc_t
-cmd_flash(int argc, char * const *argv)
-{
-    enum {
-        OP_NONE,
-        OP_READ,
-        OP_WRITE,
-    } op_mode = OP_NONE;
-    rc_t        rc;
-    const char *arg = argv[0];
-    const char *cmd_flash = "flash";
-    uint32_t    addr;
-    uint32_t    len;
-
-    while (*arg != '\0') {
-        if (*arg != *cmd_flash)
-            break;
-        arg++;
-        cmd_flash++;
-    }
-    if (*arg == '\0') {
-        argv++;
-        argc--;
-        if (argc < 1) {
-            printf("error: flash command operation to perform\n");
-            return (RC_USER_HELP);
-        }
-        arg = argv[0];
-    }
-    if ((strncmp(arg, "erase", 2) == 0) && (strstr(arg, "erase") != NULL)) {
-        if (argc != 2) {
-            printf("error: flash erase requires either chip or "
-                   "<addr> argument\n");
-            return (RC_USER_HELP);
-        }
-        if (strcmp(argv[1], "chip") == 0) {
-            rc = flash_erase(ERASE_MODE_CHIP, 0);
-        } else {
-            rc = parse_value(argv[1], (uint8_t *) &addr, 4);
-            if (rc != RC_SUCCESS)
-                return (rc);
-            rc = flash_erase(ERASE_MODE_SECTOR, addr);
-        }
-        goto report_success;
-    } else if ((*arg == 'c') && (strstr("cmd", arg) != NULL)) {
-        uint16_t cmd;
-        if ((argc < 2) || (argc > 3)) {
-            printf("error: flash cmd <cmd> [<addr>]\n");
-            return (RC_USER_HELP);
-        }
-        rc = parse_value(argv[1], (uint8_t *) &cmd, 2);
-        if (rc != RC_SUCCESS)
-            return (rc);
-
-        if (argc == 3) {
-            rc = parse_value(argv[2], (uint8_t *) &addr, 4);
-            if (rc != RC_SUCCESS)
-                return (rc);
-        } else {
-            addr = 0x05555;  // Default address for commands
-        }
-
-        flash_cmd(addr, cmd);
-        return (RC_SUCCESS);
-    } else if ((*arg == 'd') && (strstr("disable", arg) != NULL)) {
-        flash_disable();
-        return (RC_SUCCESS);
-    } else if ((*arg == 'i') && (strstr("id", arg) != NULL)) {
-        flash_id();
-        return (RC_SUCCESS);
-    } else if ((*arg == 'r') && (strstr("read", arg) != NULL)) {
-        op_mode = OP_READ;
-    } else if ((*arg == 's') && (strstr("status", arg) != NULL)) {
-        flash_status();
-        return (RC_SUCCESS);
-    } else if ((*arg == 'w') && (strstr("write", arg) != NULL)) {
-        op_mode = OP_WRITE;
-    } else {
-        printf("error: unknown flash operation %s\n", arg);
-        return (RC_USER_HELP);
-    }
-    if (argc != 3) {
-        printf("error: flash %s requires <addr> and <len>\n", arg);
-        return (RC_USER_HELP);
-    }
-    rc = parse_value(argv[1], (uint8_t *) &addr, 4);
-    if (rc != RC_SUCCESS)
-        return (rc);
-
-    rc = parse_value(argv[2], (uint8_t *) &len, 4);
-    if (rc != RC_SUCCESS)
-        return (rc);
-
-    switch (op_mode) {
-        case OP_READ:
-            rc = flash_read_binary(addr, len);
-            break;
-        case OP_WRITE:
-            rc = flash_write_binary(addr, len);
-            break;
-        default:
-            printf("BUG: op_mode\n");
-            return (RC_FAILURE);
-    }
-
-report_success:
-    if (rc != 0)
-        printf("FAILURE %d\n", rc);
     return (rc);
 }
 #endif

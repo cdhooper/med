@@ -1,3 +1,14 @@
+/*
+ * This is free and unencumbered software released into the public domain.
+ * See the LICENSE file for additional details.
+ *
+ * Designed by Chris Hooper in August 2020.
+ *
+ * ---------------------------------------------------------------------
+ *
+ * Program version.
+ */
+
 #include "version.h"
 
 const char * const version_str =

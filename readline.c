@@ -1,4 +1,13 @@
 /*
+ * This is free and unencumbered software released into the public domain.
+ * See the LICENSE file for additional details.
+ *
+ * Designed by Chris Hooper in August 2020.
+ *
+ * ---------------------------------------------------------------------
+ *
+ * Input command line handling.
+ *
  * The GNU readline library is great, but unnecessary for the full
  * function of this utility.  This module implements a barebones
  * version to the same API.
@@ -262,11 +271,7 @@ input_show_prompt(const char *prompt)
     fflush(stdout);
 }
 
-#ifdef EMBEDDED_CMD
 int
-#else
-static rc_t
-#endif
 get_new_input_line(const char *prompt, char **line)
 {
     uint len;

@@ -27,7 +27,9 @@
 #include "cmdline.h"
 #include "cmds.h"
 #include "readline.h"
-#ifndef EMBEDDED_CMD
+#ifdef EMBEDDED_CMD
+#include "pcmds.h"
+#else
 #include "sfile.h"
 #endif
 
@@ -66,9 +68,8 @@ static const cmd_t cmd_list[] = {
     { cmd_test,    "test",    2, cmd_test_help,
                         "[bwlqoh] <addr> <len> <testtype>", "test memory" },
 #ifdef EMBEDDED_CMD
-    { cmd_flash,   "flash",   1, cmd_flash_help,
-                        " [erase|id|read|write|... ",
-                        "perform flash operation" },
+    { cmd_prom,    "prom",    1, cmd_prom_help, " [erase|id|read|write|... ",
+                        "perform EEPROM operation" },
 #endif
     { cmd_time,    "time",    2, cmd_time_help, " cmd <cmd>",
                         "measure command execution time" },
@@ -319,7 +320,7 @@ cmd_exec_argv_single(int argc, char * const *argv)
                     printf("%s%s - %s\n", cl_name, cmd_list[cur].cl_help_args,
                            cmd_list[cur].cl_help_desc);
             }
-#ifndef EMBEDDED_CMD
+#ifdef HAVE_SPACE_FILE
             file_cleanup_handles();
 #endif
             break;
@@ -890,6 +891,7 @@ cmdline(void)
         *line = '\0';
         HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
     }
+    return (0);
 }
 #else /* !EMBEDDED_CMD */
 int
