@@ -1,13 +1,15 @@
 OBJDIR=objs-amiga
-SRCS=main.c cmdline.c cmds.c unix_err.c readline.c sfile.c mem_access.c version.c
+SRCS=main.c cmdline.c cmds.c unix_err.c readline.c sfile.c mem_access.c util.asm
 OBJS=$(SRCS:"*.c":"$(OBJDIR)/*.o") $(SRCS:"*.asm":"$(OBJDIR)/*.o")
-CFLAGS=-DAMIGA -O2
+CFLAGS=-DAMIGA -O2 -//
 #CFLAGS=-DAMIGA -g -Wall -Werror
 #CFLAGS=-DAMIGA -O2 -g -Wall -Werror
 QUIET=@
 CC=dcc
+ASM=das
+VERSIONOBJ=$(OBJDIR)/version.o
 
-$(OBJDIR)/med: $(OBJS)
+$(OBJDIR)/med: $(OBJS) $(VERSIONOBJ)
 	@echo "Creating %(left)"
 	$(CC) -o %(left) %(right)
 
@@ -32,11 +34,14 @@ $(OBJDIR)/mem_access.o: mem_access.c mem_access.h cmdline.h
 $(OBJDIR)/unix_err.o: unix_err.c unix_err.h
 	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left)
 
-$(OBJDIR)/version.o: version.c version.h.h
-	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left)
+$(OBJDIR)/util.o: util.asm DMakefile
+	$(ASM) %(right:*.asm) -o %(left)
+
+$(VERSIONOBJ): version.c version.h DMakefile $(OBJS)
+	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left) -DBUILD_DATE=__DATE__ -DBUILD_TIME=__TIME__
 
 $(OBJDIR): $(OBJDIR)
 	makedir %(left)
 
 clean:
-	-delete $(OBJS) >NIL:
+	-delete $(OBJS) $(VERSIONOBJ) >NIL:

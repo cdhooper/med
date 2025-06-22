@@ -11,9 +11,9 @@
 
 #ifdef EMBEDDED_CMD
 #include "printf.h"
+#include "main.h"
 #include "uart.h"
 #include <stdlib.h>
-#include "main.h"
 #else /* !EMBEDDED_CMD */
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,6 +22,7 @@
 #include <unistd.h>
 #endif /* !AMIGA */
 #endif /* !EMBEDDED_CMD */
+
 #include <string.h>
 #include <ctype.h>
 #include "cmdline.h"
@@ -62,11 +63,13 @@ static const cmd_t cmd_list[] = {
     { cmd_loop,    "loop",    0, NULL,
                         " <count> <cmd>", "execute command multiple times" },
     { cmd_echo,    "print",   0, NULL, " <text>", "display text" },
+#ifndef EMBEDDED_CMD
     { cmd_echo,    "quit",    1, NULL, "", "exit program" },
+#endif
     { cmd_patt,    "patt",    2, cmd_patt_help,
                         "[bwlqoh] <addr> <len> <pattern>", "pattern memory" },
     { cmd_test,    "test",    2, cmd_test_help,
-                        "[bwlqoh] <addr> <len> <testtype>", "test memory" },
+                        "[bwlqoh] <addr> <l> <mode> [<p>]", "test memory" },
 #ifdef EMBEDDED_CMD
     { cmd_prom,    "prom",    1, cmd_prom_help, " [erase|id|read|write|... ",
                         "perform EEPROM operation" },
@@ -76,17 +79,49 @@ static const cmd_t cmd_list[] = {
     { cmd_version, "version", 1, NULL, "", "show version" },
 };
 
+static const char *do_not_eval_cmds[] = {
+    "history",
+#ifdef EMBEDDED_CMD
+    "pld",
+#endif
+};
+
+static uint
+check_for_do_not_eval(const char *str)
+{
+    const char *first = str;
+    const char *last = str;
+    uint  len;
+    uint  cur;
+    while ((*first == ' ') || (*first == '\t'))
+        first++;
+    for (last = first; *last != ' '; last++) {
+        if ((*last < 'A') || (*last > 'z') ||
+            ((*last > 'Z') && (*last < 'a'))) {
+            break;  // Not A-Z or a-z
+        }
+    }
+    len = last - first;
+    for (cur = 0; cur < ARRAY_SIZE(do_not_eval_cmds); cur++)
+        if (strncmp(first, do_not_eval_cmds[cur], len) == 0)
+            return (1);
+    return (0);
+}
+
 static rc_t
 cmd_help(int argc, char * const *argv)
 {
-    int  cur;
-    rc_t rc = RC_SUCCESS;
-    int  arg;
+    size_t cur;
+    rc_t   rc = RC_SUCCESS;
+    int    arg;
 
     if (argc <= 1) {
         for (cur = 0; cur < ARRAY_SIZE(cmd_list); cur++) {
-            int len = strlen(cmd_list[cur].cl_name) +
-                      strlen(cmd_list[cur].cl_help_args);
+            int len;
+            if (cmd_list[cur].cl_help_desc == NULL)
+                continue;  // hidden command
+            len = strlen(cmd_list[cur].cl_name) +
+                  strlen(cmd_list[cur].cl_help_args);
             printf("%s%s", cmd_list[cur].cl_name, cmd_list[cur].cl_help_args);
             if (len < 38)
                 printf("%*s", 38 - len, "");
@@ -103,6 +138,8 @@ cmd_help(int argc, char * const *argv)
 
             if ((strcmp(argv[arg], cl_name) == 0) ||
                 ((cl_len != 0) && (strncmp(argv[arg], cl_name, cl_len) == 0))) {
+                if (cmd_list[cur].cl_help_desc == NULL)
+                    continue;  // hidden command
                 printf("%s%s - %s\n", cl_name,
                        cmd_list[cur].cl_help_args, cmd_list[cur].cl_help_desc);
                 if (cmd_list[cur].cl_help_long != NULL)
@@ -130,7 +167,7 @@ make_arglist(const char *cmd, char *argv[])
     bool_t      in_dquotes = FALSE;
     const char *ptr;
     char        lch = '\0';
-    char        buf[128];
+    char        buf[600];
     int         cur = 0;
 
     for (ptr = cmd; *ptr != '\0'; lch = *ptr, ptr++) {
@@ -188,7 +225,7 @@ make_arglist(const char *cmd, char *argv[])
                 buf[cur] = '\0';
                 argv[args] = malloc(cur + 1);
                 if (argv[args] == NULL)
-                    err(EXIT_FAILURE, "Unable to allocate memory");
+                    errx(EXIT_FAILURE, "Unable to allocate memory");
                 strncpy(argv[args], buf, cur);
                 argv[args][cur] = '\0';
 #ifdef DEBUG_ARGSPLIT
@@ -218,7 +255,7 @@ make_arglist(const char *cmd, char *argv[])
         buf[cur] = '\0';
         argv[args] = strdup(buf);
         if (argv[args] == NULL)
-            err(EXIT_FAILURE, "Unable to allocate memory");
+            errx(EXIT_FAILURE, "Unable to allocate memory");
 #ifdef DEBUG_ARGSPLIT
         printf("arg[%d]=%s\n", args, argv[args]);
 #endif
@@ -256,7 +293,7 @@ cmd_string_from_argv(int argc, char * const *argv)
     char  *cmdbuf = malloc(cmdbuf_len);
 
     if (cmdbuf == NULL)
-        err(EXIT_FAILURE, "Unable to allocate memory");
+        errx(EXIT_FAILURE, "Unable to allocate memory");
 
     cmdbuf[curlen] = '\0';
 
@@ -266,7 +303,7 @@ cmd_string_from_argv(int argc, char * const *argv)
             cmdbuf_len *= 2;
             cmdbuf = realloc(cmdbuf, cmdbuf_len);
             if (cmdbuf == NULL)
-                err(EXIT_FAILURE, "Unable to allocate memory");
+                errx(EXIT_FAILURE, "Unable to allocate memory");
             cmdbuf[curlen] = '\0';
         }
         if (curlen > 0)
@@ -297,10 +334,10 @@ scan_int(const char *str, int *intval)
     return (RC_SUCCESS);
 }
 
-rc_t
+static rc_t
 cmd_exec_argv_single(int argc, char * const *argv)
 {
-    int cur;
+    size_t cur;
     int rc = RC_SUCCESS;
 #ifdef DEBUG_ARGLIST
     printf("exec_argv\n");
@@ -316,7 +353,7 @@ cmd_exec_argv_single(int argc, char * const *argv)
             if (rc == RC_USER_HELP) {
                 if (cmd_list[cur].cl_help_long != NULL)
                     printf("%s\n", cmd_list[cur].cl_help_long);
-                else
+                else if (cmd_list[cur].cl_help_desc != NULL)
                     printf("%s%s - %s\n", cl_name, cmd_list[cur].cl_help_args,
                            cmd_list[cur].cl_help_desc);
             }
@@ -534,7 +571,7 @@ static const ops_t math_ops[] = {
 #undef DEBUG_EVAL
 
 
-rc_t
+static rc_t
 eval_string_expr(char *str, int len, char **full_str)
 {
     int      op_base;
@@ -661,7 +698,7 @@ eval_string_expr(char *str, int len, char **full_str)
 invalid_arg1:
                             /* Skip this evaluation and continue */
                             continue;
-#if DEBUG_INVALID_LHS
+#ifdef DEBUG_INVALID_LHS
                             printf("Invalid lhs \"%.*s\" for math %s "
                                    "op\n%*s^\n", op_position,
                                    str + spos, math_ops[op_num].op_name,
@@ -678,7 +715,7 @@ invalid_arg1:
                     if (sscanf(op_pos + op_len, "%llx%n", &arg2, &epos) != 1) {
                         /* Skip this evaluation and continue */
                         continue;
-#if DEBUG_INVALID_LHS
+#ifdef DEBUG_INVALID_LHS
                         printf("Invalid rhs \"%.*s\" for math %s op\n%*s^\n",
                                len - (op_position + op_len), op_pos + op_len,
                                math_ops[op_num].op_name, 19 + epos, "");
@@ -792,7 +829,11 @@ eval_cmdline_expr(const char *str)
     char *sptr = NULL;
 
     if (buf == NULL)
-        err(EXIT_FAILURE, "Unable to allocate memory");
+        errx(EXIT_FAILURE, "Unable to allocate memory");
+
+    /* Some commands should not have arguments evaluated / expanded */
+    if (check_for_do_not_eval(str))
+        return (buf);
 
     /* Repeatedly scan string, evaluating expressions within parens first */
 eval_again:
@@ -815,7 +856,7 @@ eval_again:
 
     ptr = strdup(buf);
     if (ptr == NULL)
-        err(EXIT_FAILURE, "Unable to allocate memory");
+        errx(EXIT_FAILURE, "Unable to allocate memory");
     free(buf);
     return (ptr);
 }
@@ -881,7 +922,7 @@ cmdline(void)
             return (0);
         }
 
-        HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 1);
+        led_busy(1);
         hist_cur = history_get(history_length + history_base - 1);
         if ((hist_cur == NULL) || (strcmp(sline, hist_cur->line) != 0)) {
             /* Not a duplicate of previous line; add to history. */
@@ -889,7 +930,7 @@ cmdline(void)
         }
         (void) cmd_exec_string(sline);
         *line = '\0';
-        HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, 0);
+        led_busy(0);
     }
     return (0);
 }

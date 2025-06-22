@@ -3,6 +3,17 @@
 #include <errno.h>
 
 void
+errx(int ec, const char *fmt, ...)
+{
+    va_list args;
+
+    va_start(args, fmt);
+    (void) vprintf(fmt, args);
+    va_end(args);
+    putchar('\n');
+}
+
+void
 err(int ec, const char *fmt, ...)
 {
     va_list args;

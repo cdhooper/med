@@ -39,7 +39,7 @@
 #define INPUT_BUF_MAX 512  /* Max input line length */
 
 /* ASCII input and output keystrokes */
-#define KEY_LINE_BEGIN       0x01  /* ^A Line begin */
+#define KEY_CTRL_A           0x01  /* ^A Line begin */
 #define KEY_CTRL_B           0x02  /* ^B Cursor left */
 #define KEY_CTRL_C           0x03  /* ^C Abort */
 #define KEY_CTRL_D           0x04  /* ^D Delete char to the right */
@@ -65,6 +65,7 @@
 #define KEY_BACKSPACE2       0x7f  /* ^? Backspace on some keyboards */
 #define KEY_AMIGA_ESC        0x9b  /* Amiga key sequence */
 
+#define KEY_LINE_BEGIN       KEY_CTRL_A
 #define KEY_LEFT             KEY_CTRL_B
 #define KEY_DEL_CHAR         KEY_CTRL_D
 #define KEY_LINE_END         KEY_CTRL_E
@@ -391,7 +392,10 @@ get_new_input_line(const char *prompt, char **line)
                     ch = KEY_LINE_BEGIN;
                     break;
                 default:
-                    printf("\nUnknown 'ESC [ 1 ; 2|3|5 %c'\n", ch);
+                    printf("\nUnknown 'ESC [ 1 ; %c %c'\n",
+                           (input_mode == INPUT_MODE_1SEMI2) ? '2' :
+                           (input_mode == INPUT_MODE_1SEMI3) ? '3' : '5',
+                           ch);
                     goto redraw_prompt;
             }
             break;
@@ -607,8 +611,8 @@ update_input_line:
             if ((ch < 0x20) || (ch >= 0x80))
                 break;
 literal_input:
-            len = strlen(input_buf + input_pos) + 2;
-            if (len + input_pos >= sizeof (input_buf))
+            len = strlen(input_buf + input_pos) + 1;
+            if (len + 1 + input_pos >= sizeof (input_buf))
                 break;  /* End of input buffer */
 
             /* Push input following the cursor to the right */
@@ -616,7 +620,7 @@ literal_input:
             input_buf[input_pos] = (uint8_t) ch;
 
             putstr(input_buf + input_pos);
-            putchars(KEY_BACKSPACE, len - 2);
+            putchars(KEY_BACKSPACE, len - 1);
             input_pos++;
     }
     return (RC_SUCCESS);
@@ -683,12 +687,12 @@ rl_bind_key(int key, const void *func)
 int
 rl_initialize(void)
 {
-    static bool_t do_rl_init = TRUE;
+    static bool_t did_rl_init = FALSE;
 
-    if (do_rl_init == FALSE)
+    if (did_rl_init == TRUE)
         return (0);
 
-    do_rl_init        = FALSE;
+    did_rl_init       = TRUE;
     input_need_prompt = 1;
     history_cur       = history_buf;
     input_clear();

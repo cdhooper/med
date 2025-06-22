@@ -6,7 +6,7 @@ OBJDIR	:= objs
 SRCS    := main.c cmdline.c cmds.c readline.c sfile.c mem_access.c version.c
 OBJS    := $(SRCS:%.c=$(OBJDIR)/%.o)
 CFLAGS  := -DBUILD_DATE=\"$(DATE)\" -DBUILD_TIME=\"$(TIME)\"
-CFLAGS  += -g -Wall -Werror -Wpedantic
+CFLAGS  += -O2 -g -Wall -Werror -Wpedantic -Wundef
 #CFLAGS += -g
 QUIET   := @
 #QUIET   :=
@@ -30,7 +30,6 @@ $(OBJDIR)/readline.o: readline.h cmds.h
 $(OBJDIR)/sfile.o: cmds.h sfile.h
 $(OBJDIR)/mem_access.o: mem_access.h cmdline.h
 $(OBJDIR)/version.o: version.h $(filter-out $(OBJDIR)/version.o, $(OBJS))
-$(info FO $(filter-out $(OBJDIR)/version.o, $(OBJS)))
 
 $(OBJS): Makefile cmdline.h | $(OBJDIR)
 	@echo "Creating $@"

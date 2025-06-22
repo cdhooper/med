@@ -2,17 +2,28 @@
  * This is free and unencumbered software released into the public domain.
  * See the LICENSE file for additional details.
  *
- * Designed by Chris Hooper in August 2020.
+ * Designed by Chris Hooper in 2020.
  *
  * ---------------------------------------------------------------------
  *
  * Command line handling.
  */
 
+#include "cmdline.h"
+#ifdef EMBEDDED_CMD
+#include "main.h"
+#include "pcmds.h"
+#include "prom_access.h"
+#include <stdbool.h>
+#include "timer.h"
+#include "uart.h"
+#endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
+#include <time.h>
 #ifdef AMIGA
 #include "amiga_stdint.h"
 #else
@@ -20,21 +31,13 @@
 #include <stdint.h>
 #include <unistd.h>
 #endif
-#include "cmdline.h"
+#ifndef EMBEDDED_CMD
+#include "sfile.h"
+#endif
 #include "cmds.h"
 #include "readline.h"
 #include "mem_access.h"
 #include "version.h"
-
-#ifdef EMBEDDED_CMD
-#include "pcmds.h"
-#include "prom_access.h"
-#include <stdbool.h>
-#include "timer.h"
-#include "uart.h"
-#else
-#include "sfile.h"
-#endif
 
 #ifdef AMIGA
 #define IS_BIG_ENDIAN
@@ -57,7 +60,7 @@ input_break_pending(void)
 
 const char cmd_c_help[] =
 "c[bwlqoh] <addr> <value...>\n"
-"   b = 1 byte \n"
+"   b = 1 byte\n"
 "   w = word (2 bytes)\n"
 "   l = long (4 bytes)\n"
 "   q = quad (8 bytes)\n"
@@ -67,7 +70,7 @@ const char cmd_c_help[] =
 
 const char cmd_comp_help[] =
 "comp[bwlqoh] <addr> <addr> <len>\n"
-"   b = 1 byte \n"
+"   b = 1 byte\n"
 "   w = word (2 bytes)\n"
 "   l = long (4 bytes)\n"
 "   q = quad (8 bytes)\n"
@@ -76,7 +79,7 @@ const char cmd_comp_help[] =
 
 const char cmd_copy_help[] =
 "copy[bwlqoh] <saddr> <daddr> <len>\n"
-"   b = 1 byte \n"
+"   b = 1 byte\n"
 "   w = word (2 bytes)\n"
 "   l = long (4 bytes)\n"
 "   q = quad (8 bytes)\n"
@@ -85,7 +88,7 @@ const char cmd_copy_help[] =
 
 const char cmd_d_help[] =
 "d[bwlqoh] <addr> [<len>]\n"
-"   b = 1 byte \n"
+"   b = 1 byte\n"
 "   w = word (2 bytes)\n"
 "   l = long (4 bytes)\n"
 "   q = quad (8 bytes)\n"
@@ -94,44 +97,109 @@ const char cmd_d_help[] =
 "   A = no ASCII\n"
 "   N = no output (only perform read)\n"
 "   R = raw output (no address or ASCII output)\n"
-"   S = swap bytes (endian)";
+"   S = swap bytes (endian)\n"
+"  SS = swap ASCII display (endian)";
 
 const char cmd_patt_help[] =
 "patt[bwlqoh] <addr> <len> <pattern>\n"
-"   b = 1 byte \n"
+"   b = 1 byte\n"
 "   w = word (2 bytes)\n"
 "   l = long (4 bytes)\n"
 "   q = quad (8 bytes)\n"
 "   o = oct (16 bytes)\n"
 "   h = hex (32 bytes)\n"
 "   S = swap bytes (endian)\n"
-"   <pattern> may be one, zero, blip, strobe, walk0, walk1, or a "
-"specific value\n";
+"   <len> is the length of the area in bytes\n"
+"   <pattern> may be one, zero, blip, rand, strobe, walk0, walk1, addr, or a "
+"             specific value\n";
 const char cmd_patt_patterns[] =
-    "<pattern> may be one, zero, blip, strobe, walk0, walk1, or a "
-"numeric value\n";
+    "<pattern> may be one, zero, blip, rand, strobe, walk0, walk1, addr, or a "
+"value\n";
 
 const char cmd_test_help[] =
-"test[bwlqoh] <addr> <len> <mode> [read|write]\n"
-"   b = 1 byte \n"
+"test[bwlqoh] <addr> <len> <mode> [<p>]\n"
+"   b = 1 byte\n"
 "   w = word (2 bytes)\n"
 "   l = long (4 bytes)\n"
 "   q = quad (8 bytes)\n"
 "   o = oct (16 bytes)\n"
 "   h = hex (32 bytes)\n"
-"   <mode> may be one, zero, walk0, or walk1\n";
+"   <len> is the length to test in bytes\n"
+"   <mode> may be one, zero, rand, walk0, walk1, read, or <value>\n"
+"   <p> is the number of test passes (default: 1)";
 const char cmd_test_patterns[] =
-    "<mode> may be one, zero, walk0, or walk1\n";
+    "<mode> may be one, zero, rand, walk0, walk1, read, or <value>\n";
 
 const char cmd_time_help[] =
-"time cmd <cmd> - measure command execution time\n";
+"time cmd <cmd> - measure command execution time\n"
+#ifndef AMIGA
+"time now       - display the current time\n"
+#endif
+#ifdef EMBEDDED_CMD
+"time test      - test timers\n"
+"time watch     - watch the timer to verify tick is working correctly\n"
+#endif
+;
+
+#ifdef AMIGA
+#include <dos/dos.h>
+
+#define UNUSED(x)
+
+/*
+ * is_user_abort
+ * -------------
+ * Check for user break input (^C)
+ */
+static BOOL
+is_user_abort(void)
+{
+    if (SetSignal(0, 0) & SIGBREAKF_CTRL_C)
+        return (1);
+    return (0);
+}
+
+void
+msleep(uint msec)
+{
+    while (msec > 1000) {
+        Delay(TICKS_PER_SECOND);
+        msec -= 1000;
+        if (is_user_abort())
+            return;
+    }
+    Delay(msec * TICKS_PER_SECOND / 1000);
+}
+
+void
+usleep(uint usec)
+{
+    msleep(usec / 1000);
+}
+#endif
+
+#ifdef EMBEDDED_CMD
+unsigned
+sleep(uint sec)
+{
+    timer_delay_msec(sec * 1000);
+    return (0);
+}
+
+int
+usleep(useconds_t us)
+{
+    timer_delay_usec(us);
+    return (0);
+}
+#endif
 
 #define SPACE_OFFSET 0
 #define SPACE_MEMORY 1
 #define SPACE_FILE   2
 #define SPACE_PROM   3
 
-rc_t
+static rc_t
 data_read(uint64_t space, uint64_t addr, uint width, void *buf)
 {
     switch ((uint8_t) space) {
@@ -151,7 +219,7 @@ data_read(uint64_t space, uint64_t addr, uint width, void *buf)
     }
 }
 
-rc_t
+static rc_t
 data_write(uint64_t space, uint64_t addr, uint width, void *buf)
 {
     switch ((uint8_t) space) {
@@ -313,6 +381,30 @@ parse_addr(char * const **arg, int *argc, uint64_t *space, uint64_t *addr)
     return (RC_SUCCESS);
 }
 
+/*
+ * rand32
+ * ------
+ * Very simple pseudo-random number generator
+ */
+static uint32_t rand_seed = 0;
+static uint32_t
+rand32(void)
+{
+    rand_seed = (rand_seed * 25173) + 13849;
+    return (rand_seed);
+}
+
+/*
+ * srand32
+ * -------
+ * Very simple random number seed
+ */
+static void
+srand32(uint32_t seed)
+{
+    rand_seed = seed;
+}
+
 static uint
 ascii_hex_to_digit(char ch)
 {
@@ -370,7 +462,7 @@ parse_value(const char *arg, uint8_t *value, uint width)
     return (RC_SUCCESS);
 }
 
-rc_t
+static rc_t
 parse_uint(const char *arg, uint *value)
 {
     int pos = 0;
@@ -378,7 +470,7 @@ parse_uint(const char *arg, uint *value)
 
     if ((sscanf(arg, "%x%n", &x, &pos) != 1) ||
         ((arg[pos] != '\0') && (arg[pos] != ' ')) ||
-        (pos > (sizeof (x) * 2))) {
+        (pos > (int)(sizeof (x) * 2))) {
         printf("Invalid value \"%s\"\n", arg);
         return (RC_FAILURE);
     }
@@ -386,7 +478,7 @@ parse_uint(const char *arg, uint *value)
     return (RC_SUCCESS);
 }
 
-rc_t
+static rc_t
 parse_width(const char *arg, uint *width, char *other, size_t other_size)
 {
     size_t other_count = 0;
@@ -513,7 +605,7 @@ cmd_c(int argc, char * const *argv)
     return (RC_SUCCESS);
 }
 
-char const *
+static char const *
 skip(const char *str, const char *skip)
 {
     while ((*str == *skip) && (*skip != '\0')) {
@@ -610,7 +702,7 @@ cmd_comp(int argc, char * const *argv)
                 print_addr(space2, addr2 + offset);
                 printf(" ");
                 for (temp = 0; temp < width; temp++)
-                    printf("%02x", buf1[temp]);
+                    printf("%02x", buf2[temp]);
                 printf("\n");
             }
         }
@@ -700,12 +792,16 @@ printable_ascii(uint8_t ch)
 }
 
 static void
-cmd_d_conv_printable(char *buf, const uint8_t *data, uint64_t len)
+cmd_d_conv_printable(char *buf, const uint8_t *data, uint64_t len, bool_t swap)
 {
     uint pos = 0;
 
-    for (pos = 0; pos < len; pos++)
-        buf[pos] = printable_ascii(data[pos]);
+    for (pos = 0; pos < len; pos++) {
+        if (swap)
+            buf[len - pos - 1] = printable_ascii(data[pos]);
+        else
+            buf[pos] = printable_ascii(data[pos]);
+    }
 }
 
 rc_t
@@ -728,6 +824,7 @@ cmd_d(int argc, char * const *argv)
     bool_t   flag_N  = FALSE;  /* Don't print */
     bool_t   flag_R  = FALSE;  /* Raw (only data values) */
     bool_t   flag_S  = FALSE;  /* Swap endian */
+    bool_t   flag_SS = FALSE;  /* Swap endian of ASCII */
     bool_t   printed = FALSE;
 
 #ifndef IS_BIG_ENDIAN
@@ -757,6 +854,8 @@ cmd_d(int argc, char * const *argv)
                 break;
             case 's':
             case 'S':
+                if (flag_S)
+                    flag_SS = TRUE;
                 flag_S = !flag_S;
                 break;
             default:
@@ -801,7 +900,7 @@ cmd_d(int argc, char * const *argv)
         flag_A = TRUE;
 
     for (offset = 0; offset < len; offset += width) {
-        if (!flag_R && ((offset % per_line) == 0)) {
+        if (!flag_N && !flag_R && ((offset % per_line) == 0)) {
             if (!flag_A && (offset != 0)) {
                 /* Display ASCII */
                 printf(" %.*s", charpos, charbuf);
@@ -843,11 +942,11 @@ cmd_d(int argc, char * const *argv)
         printed = TRUE;
 
         if (!flag_A) {
-            cmd_d_conv_printable(charbuf + charpos, buf, width);
+            cmd_d_conv_printable(charbuf + charpos, buf, width, flag_SS);
             charpos += width;
         }
     }
-    if (!flag_A && (offset != 0)) {
+    if (!flag_N && !flag_A && (offset != 0)) {
         /* Display ASCII */
         if (per_line > charpos) {
             uint chars_missing = per_line - charpos;
@@ -858,7 +957,7 @@ cmd_d(int argc, char * const *argv)
         charpos = 0;
         printed = TRUE;
     }
-    if (printed)
+    if (!flag_N && printed)
         printf("\n");
     return (RC_SUCCESS);
 }
@@ -888,7 +987,7 @@ cmd_ignore(int argc, char * const *argv)
 }
 
 /* Remove surrounding quotes, if present */
-char *
+static char *
 remove_quotes(char *line)
 {
     char *ptr = line;
@@ -908,19 +1007,21 @@ remove_quotes(char *line)
  *      need for this function.
  */
 static char *
-loop_index_substitute(char *src, int value, int count)
+loop_index_substitute(char *src, int value, int count, int loop_level)
 {
     char   valbuf[10];
     int    vallen  = sprintf(valbuf, "%x", value);
     size_t newsize = strlen(src) + vallen * count + 1;
     char  *nstr    = malloc(newsize);
     char  *dptr    = nstr;
+    char   varstr[4] = "$a";
 
+    varstr[1] += loop_level;  // $a, $b, $c, etc.
     if (nstr == NULL)
         return (strdup(src));
 
     while (*src != '\0') {
-        char *ptr = strstr(src, "$a");
+        char *ptr = strstr(src, varstr);
         int   len;
         if (ptr == NULL) {
             /* Nothing more */
@@ -941,11 +1042,14 @@ loop_index_substitute(char *src, int value, int count)
 }
 
 static int
-loop_index_count(char *src)
+loop_index_count(char *src, int loop_level)
 {
     int   count = 0;
+    char  varstr[4] = "$a";
+    varstr[1] += loop_level;  // $a, $b, $c, etc.
+
     while (*src != '\0') {
-        src = strstr(src, "$a");
+        src = strstr(src, varstr);
         if (src == NULL)
             break;
         count++;
@@ -966,6 +1070,7 @@ cmd_loop(int argc, char * const *argv)
     char   *cmd;
     char   *cmdline;
     rc_t    rc = RC_SUCCESS;
+    static uint loop_level = 0;  // for nested loops
 
     if (argc <= 2) {
         printf("error: loop command requires count and command to execute\n");
@@ -977,7 +1082,7 @@ cmd_loop(int argc, char * const *argv)
     if (cmdline == NULL)
         return (RC_FAILURE);
     cmd = remove_quotes(cmdline);
-    index_uses = loop_index_count(cmd);
+    index_uses = loop_index_count(cmd, loop_level);
     if (index_uses == 0)
         nargc = make_arglist(cmd, nargv);
 
@@ -985,11 +1090,13 @@ cmd_loop(int argc, char * const *argv)
         if (index_uses > 0) {
             if (cur != 0)
                 free_arglist(nargc, nargv);
-            ptr = loop_index_substitute(cmd, cur, index_uses);
+            ptr = loop_index_substitute(cmd, cur, index_uses, loop_level);
             nargc = make_arglist(ptr, nargv);
             free(ptr);
         }
+        loop_level++;
         rc = cmd_exec_argv(nargc, nargv);
+        loop_level--;
         if (rc != RC_SUCCESS) {
             if (rc == RC_USER_HELP)
                 rc = RC_FAILURE;
@@ -1040,32 +1147,15 @@ convert_name_to_time_units(const char *arg, int *units)
     return (RC_SUCCESS);
 }
 
-#ifdef AMIGA
-#define NEED_USLEEP
-#endif
-
-#ifdef NEED_USLEEP
-#include <dos/dos.h>
-void
-msleep(uint msec)
-{
-    Delay(msec * 1000 / TICKS_PER_SECOND);
-}
-
-void
-usleep(uint usec)
-{
-    msleep(usec / 1000);
-}
-#endif
 rc_t
 cmd_delay(int argc, char * const *argv)
 {
-    rc_t rc;
-    uint value = 0;
+    int  value = 0;
     int  units = 0; /* default: seconds */
+    int  pos   = 0;
     int  count;
     char *ptr;
+    char restore = 0;
 
     if (argc <= 1) {
         printf("This command requires an argument: <time>\n");
@@ -1077,13 +1167,17 @@ cmd_delay(int argc, char * const *argv)
     }
     for (ptr = argv[1]; *ptr != '\0'; ptr++) {
         if (convert_name_to_time_units(ptr, &units) == RC_SUCCESS) {
+            restore = *ptr;
             *ptr = '\0';
             break;
         }
     }
-    if ((rc = parse_value(argv[1], (uint8_t *) &value,
-                          sizeof (value))) != RC_SUCCESS)
-        return (rc);
+
+    if ((sscanf(argv[1], "%i%n", &value, &pos) != 1) ||
+        (argv[1][pos] != '\0')) {
+        printf("Invalid value \"%s\"\n", argv[1]);
+        return (RC_BAD_PARAM);
+    }
 
     if (argc > 2) {
         if (convert_name_to_time_units(argv[2], &units) != RC_SUCCESS) {
@@ -1094,8 +1188,8 @@ cmd_delay(int argc, char * const *argv)
 
     switch (units) {
         case 2:  /* hours */
-            for (count = 0; count < 3600; count++) {
-                sleep(value);
+            for (count = 0; count < 3600 * value; count++) {
+                sleep(1);
                 if (input_break_pending()) {
                     printf("^C\n");
                     return (RC_USR_ABORT);
@@ -1103,8 +1197,8 @@ cmd_delay(int argc, char * const *argv)
             }
             break;
         case 1:  /* minutes */
-            for (count = 0; count < 60; count++) {
-                sleep(value);
+            for (count = 0; count < 60 * value; count++) {
+                sleep(1);
                 if (input_break_pending()) {
                     printf("^C\n");
                     return (RC_USR_ABORT);
@@ -1112,16 +1206,22 @@ cmd_delay(int argc, char * const *argv)
             }
             break;
         case 0:  /* seconds */
-            sleep(value);
-            break;
-        case -1:  /* milliseconds */
-            while (value > 1000) {
+            for (count = 0; count < value; count++) {
                 sleep(1);
-                value -= 1000;
                 if (input_break_pending()) {
                     printf("^C\n");
                     return (RC_USR_ABORT);
                 }
+            }
+            break;
+        case -1:  /* milliseconds */
+            while (value > 1000) {
+                sleep(1);
+                if (input_break_pending()) {
+                    printf("^C\n");
+                    return (RC_USR_ABORT);
+                }
+                value -= 1000;
             }
             usleep(value * 1000);
             break;
@@ -1132,6 +1232,8 @@ cmd_delay(int argc, char * const *argv)
             usleep(value / 1000);
             break;
     }
+    if (ptr != NULL)
+        *ptr = restore;
     return (RC_SUCCESS);
 }
 
@@ -1152,12 +1254,14 @@ cmd_patt(int argc, char * const *argv)
     const char *cmd;
     char       *ptr;
     static enum {
-        PATT_ZERO,
         PATT_ONE,
+        PATT_ZERO,
         PATT_BLIP,
+        PATT_RAND,
         PATT_STROBE,
         PATT_WALK0,
         PATT_WALK1,
+        PATT_ADDR,
         PATT_VALUE,
     } pattmode = PATT_ONE;
 
@@ -1216,6 +1320,9 @@ show_patterns:
     } else if (strcmp(argv[0], "blip") == 0) {
         pattmode = PATT_BLIP;
         memset(buf, 0x00, width);
+    } else if (strncmp(argv[0], "random", 4) == 0) {
+        pattmode = PATT_RAND;
+        srand32(time(NULL));
     } else if (strcmp(argv[0], "strobe") == 0) {
         pattmode = PATT_STROBE;
         memset(buf, 0x00, width);
@@ -1225,16 +1332,61 @@ show_patterns:
     } else if (strcmp(argv[0], "walk1") == 0) {
         pattmode = PATT_WALK1;
         memset(buf, 0x00, width);
+    } else if (strncmp(argv[0], "address", 4) == 0) {
+        pattmode = PATT_ADDR;
+        memset(buf, 0x00, width);
     } else {
         if ((rc = parse_value(argv[0], buf, width)) != RC_SUCCESS) {
             printf("Invalid pattern %s\n", argv[0]);
             goto show_patterns;
+        }
+        if (flag_S) {
+            uint pos;
+            for (pos = 0; pos < width / 2; pos++) {
+                uint8_t temp = buf[pos];
+                buf[pos] = buf[width - pos - 1];
+                buf[width - 1 - pos] = temp;
+            }
         }
         pattmode = PATT_VALUE;
     }
 
     for (offset = 0; offset < len; offset += width) {
         switch (pattmode) {
+            case PATT_ADDR: {
+                uint32_t value = addr + offset;
+                uint     pos;
+                switch (width) {
+                    case 1:
+                    case 3:
+                        for (pos = 0; pos < width; pos++)
+                            buf[pos] = (uint8_t) value;
+                        break;
+                    case 2:
+                        *(uint16_t *)buf = (uint16_t) value;
+                        break;
+                    default:
+                    case 4:
+#ifdef IS_BIG_ENDIAN
+                        *(uint32_t *)(buf + width - 4) = (uint32_t) value;
+                        if (width > 4)
+                            memset(buf, 0, width - 4);
+#else
+                        *(uint32_t *)buf = (uint32_t) value;
+                        if (width > 4)
+                            memset(buf + 4, 0, width - 4);
+#endif
+                        break;
+                }
+                if (flag_S) {
+                    for (pos = 0; pos < width / 2; pos++) {
+                        uint8_t temp = buf[pos];
+                        buf[pos] = buf[width - pos - 1];
+                        buf[width - pos - 1] = temp;
+                    }
+                }
+                break;
+            }
             case PATT_WALK0: {
                 int pos  = (step >> 3) & (width - 1);
                 int opos = ((step - 1) >> 3) & (width - 1);
@@ -1257,6 +1409,12 @@ show_patterns:
                 buf[pos] = (1 << (step & 7));
                 if (pos != opos)
                     buf[opos] = 0x00;
+                break;
+            }
+            case PATT_RAND: {
+                uint swidth;
+                for (swidth = 0; swidth < width; swidth += 4)
+                    *(uint32_t *) (buf + swidth) = rand32();
                 break;
             }
             case PATT_STROBE: {
@@ -1310,94 +1468,203 @@ cmd_test(int argc, char * const *argv)
 {
     rc_t        rc;
     uint        width;
+    uint        opos = 0;
+    uint        step = 0;
+    uint        mismatch_count = 0;
     uint64_t    addr;
     uint64_t    space;
     uint        len;
     uint        offset;
+    uint        pass;
+    uint        passes = 1;
     char        other[32];
     uint8_t     buf[MAX_TRANSFER];
     uint8_t     rbuf[MAX_TRANSFER];
+    uint8_t     rrbuf[MAX_TRANSFER];
+    uint32_t    srand_seed;
+    bool_t      flag_N  = FALSE;  /* Don't print */
     const char *cmd;
+    char       *ptr;
     static enum {
+        TEST_VALUE,
         TEST_ZERO,
         TEST_ONE,
+        TEST_RAND,
         TEST_WALK0,
         TEST_WALK1,
-        TEST_VALUE,
     } testmode = TEST_VALUE;
     static enum {
         RWMODE_READ,
         RWMODE_WRITE,
     } rwmode = RWMODE_READ;
+    bool_t      flag_S = FALSE;
 
     if (argc < 4) {
-        printf("test requires three arguments: <addr> <len> <mode>\n");
+        printf("test requires three arguments: <addr> <len> <mode> "
+               "[<passes>]\n");
         return (RC_USER_HELP);
     }
     cmd = skip(argv[0], "test");
     rc = parse_width(cmd, &width, other, sizeof (other));
     if (rc != RC_SUCCESS)
         return (RC_USER_HELP);
+    for (ptr = other; *ptr != '\0'; ptr++) {
+        switch (*ptr) {
+            case 'n':
+            case 'N':
+                flag_N = TRUE;
+                break;
+            default:
+                printf("Unknown flag \"%s\"\n", ptr);
+                return (RC_USER_HELP);
+        }
+    }
     argc--;
     argv++;
     if ((rc = parse_addr(&argv, &argc, &space, &addr)) != RC_SUCCESS)
         return (RC_USER_HELP);
     if (argc < 2) {
-        printf("test requires three arguments: <addr> <len> <mode>\n");
+        printf("test requires three arguments: <addr> <len> <mode> "
+               "[<passes>]\n");
         return (RC_USER_HELP);
     }
     if ((rc = parse_uint(argv[0], &len)) != RC_SUCCESS)
         return (RC_USER_HELP);
-    if (argc > 1) {
-        printf("test requires three arguments: <addr> <len> <mode>\n");
+    argc--;
+    argv++;
+
+    if ((argc < 1) || (argc > 2)) {
+        printf("test requires three arguments: <addr> <len> <mode> "
+               "[<passes>]\n");
 show_patterns:
         printf(cmd_test_patterns);
         return (RC_USER_HELP);
     }
-    if (argc == 1) {
-        rwmode = RWMODE_WRITE;
-        if (strcmp(argv[0], "?") == 0) {
-            printf(cmd_test_patterns);
-        } else if (strcmp(argv[0], "walk0") == 0) {
-            testmode = TEST_WALK0;
-            memset(buf, 0x00, width);
-        } else if (strcmp(argv[0], "walk1") == 0) {
-            testmode = TEST_WALK1;
-            memset(buf, 0xff, width);
-        } else {
-            if ((rc = parse_value(argv[0], buf, width)) != RC_SUCCESS) {
-                printf("Invalid mode %s\n", argv[0]);
-                goto show_patterns;
-            }
-            testmode = TEST_VALUE;
-        }
-    } else {
+    rwmode = RWMODE_WRITE;
+    if (strcmp(argv[0], "?") == 0) {
+        printf(cmd_test_patterns);
+    } else if (strcmp(argv[0], "one") == 0) {
+        testmode = TEST_ONE;
+        memset(buf, 0xff, width);
+    } else if (strcmp(argv[0], "read") == 0) {
         rwmode = RWMODE_READ;
+    } else if (strncmp(argv[0], "rand", 4) == 0) {
+        testmode = TEST_RAND;
+        srand_seed = time(NULL);
+        srand32(srand_seed);
+    } else if (strcmp(argv[0], "walk0") == 0) {
+        testmode = TEST_WALK0;
+        memset(buf, 0xff, width);
+    } else if (strcmp(argv[0], "walk1") == 0) {
+        testmode = TEST_WALK1;
+        memset(buf, 0x00, width);
+    } else if (strcmp(argv[0], "zero") == 0) {
+        testmode = TEST_ZERO;
+        memset(buf, 0x00, width);
+    } else {
+        testmode = TEST_VALUE;
+        if ((rc = parse_value(argv[0], buf, width)) != RC_SUCCESS) {
+            printf("Invalid mode %s\n", argv[0]);
+            goto show_patterns;
+        }
+    }
+    if (argc > 1) {
+        if ((rc = parse_uint(argv[1], &passes)) != RC_SUCCESS)
+            return (RC_USER_HELP);
+        if (passes == 0) {
+            printf("Invalid number of passes %s\n", argv[1]);
+            return (RC_USER_HELP);
+        }
     }
 
-    for (offset = 0; offset < len; offset += width) {
-        if (rwmode == RWMODE_WRITE) {
-            rc = data_write(space, addr + offset, width, buf);
+    for (pass = 0; pass < passes; pass++) {
+        for (offset = 0; offset < len; offset += width) {
+            if (rwmode == RWMODE_WRITE) {
+                switch (testmode) {
+                    case TEST_RAND: {
+                        uint swidth;
+                        for (swidth = 0; swidth < width; swidth += 4)
+                            *(uint32_t *) (buf + swidth) = rand32();
+                        break;
+                    }
+                    case TEST_WALK0: {
+                        uint pos = (step >> 3) & (width - 1);
+                        if (flag_S) {
+                            pos  = width - 1 - pos;
+                        }
+                        buf[pos] = ~(1 << (step & 7));
+                        if (pos != opos)
+                            buf[opos] = 0xff;
+                        opos = pos;
+                        break;
+                    }
+                    case TEST_WALK1: {
+                        uint pos = (step >> 3) & (width - 1);
+                        if (flag_S) {
+                            pos  = width - 1 - pos;
+                        }
+                        buf[pos] = (1 << (step & 7));
+                        if (pos != opos)
+                            buf[opos] = 0x00;
+                        opos = pos;
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                rc = data_write(space, addr + offset, width, buf);
+                if (rc != RC_SUCCESS) {
+                    printf("Error writing %d bytes at ", width);
+                    print_addr(space, addr + offset);
+                    printf("\n");
+                    return (rc);
+                }
+            }
+            rc = data_read(space, addr + offset, width, rbuf);
             if (rc != RC_SUCCESS) {
-                printf("Error writing %d bytes at ", width);
+                printf("Error reading %d bytes at ", width);
                 print_addr(space, addr + offset);
                 printf("\n");
                 return (rc);
             }
+            if (memcmp(buf, rbuf, width) != 0) {
+                uint temp;
+                if (mismatch_count == 5) {
+                    printf("...\n");
+                } else if (mismatch_count < 5) {
+                    printf("Miscompare at ");
+                    print_addr(space, addr + offset);
+                    printf(": W=");
+                    for (temp = 0; temp < width; temp++)
+                        printf("%02x", buf[width - temp - 1]);
+                    printf(" R=");
+                    for (temp = 0; temp < width; temp++)
+                        printf("%02x", rbuf[width - temp - 1]);
+                    rc = data_read(space, addr + offset, width, rrbuf);
+                    if ((rc == RC_SUCCESS) &&
+                        (memcmp(rbuf, rrbuf, width) != 0)) {
+                        printf(" RR=");
+                        for (temp = 0; temp < width; temp++)
+                            printf("%02x", rrbuf[width - temp - 1]);
+                    }
+                    printf("\n");
+                }
+                mismatch_count++;
+            }
+            if (input_break_pending()) {
+                printf("^C\n");
+                return (RC_USR_ABORT);
+            }
+            step++;
         }
-        rc = data_read(space, addr + offset, width, rbuf);
-        if (rc != RC_SUCCESS) {
-            printf("Error reading %d bytes at ", width);
-            print_addr(space, addr + offset);
-            printf("\n");
-            return (rc);
-        }
-        (void) testmode;
-        if (input_break_pending()) {
-            printf("^C\n");
-            return (RC_USR_ABORT);
-        }
+
+        /* Increment walking zero/one step when wrapping */
+        if ((((pass + 1) * len / width) % (8 * width)) == 0)
+            step++;
     }
+    if ((mismatch_count > 0) || (flag_N == FALSE))
+        printf("%u mismatches\n", mismatch_count);
+
     return (RC_SUCCESS);
 }
 
@@ -1409,7 +1676,7 @@ cmd_version(int argc, char * const *argv)
 }
 
 #ifdef AMIGA
-// XXX: this should go in cmds_amiga.c
+/* XXX: this should go in cmds_amiga.c */
 #include <time.h>
 #include <clib/timer_protos.h>
 #define TICKS_PER_MINUTE (TICKS_PER_SECOND * 60)
@@ -1439,7 +1706,6 @@ diff_dstamp(struct DateStamp *ds1, struct DateStamp *ds2)
 rc_t
 cmd_time(int argc, char * const *argv)
 {
-    uint64_t time_diff;
     struct DateStamp stime;
     struct DateStamp etime;
     rc_t     rc;
@@ -1454,7 +1720,6 @@ cmd_time(int argc, char * const *argv)
     DateStamp(&stime);
     rc = cmd_exec_argv(argc, argv);
     DateStamp(&etime);
-    time_diff = diff_dstamp(&etime, &stime);
     printf("%lld ms\n", diff_dstamp(&etime, &stime));
     if (rc == RC_USER_HELP)
         rc = RC_FAILURE;
@@ -1462,7 +1727,7 @@ cmd_time(int argc, char * const *argv)
     return (rc);
 }
 #elif !defined(EMBEDDED_CMD)  /* UNIX */
-// XXX: this should go in cmds_unix.c
+/* XXX: this should go in cmds_unix.c */
 #include <sys/time.h>
 
 static uint64_t
@@ -1483,24 +1748,33 @@ rc_t
 cmd_time(int argc, char * const *argv)
 {
     struct timezone tz;
-    struct timeval  stime;
-    struct timeval  etime;
     rc_t            rc;
 
-    if ((argc <= 2) || (strcmp(argv[1], "cmd") != 0)) {
-        printf("error: time command requires cmd and command to execute\n");
+    if (argc <= 1)
+        return (RC_USER_HELP);
+
+    if (strncmp(argv[1], "cmd", 1) == 0) {
+        struct timeval  stime;
+        struct timeval  etime;
+        if (argc <= 2) {
+            printf("error: time cmd requires command to execute\n");
+            return (RC_USER_HELP);
+        }
+        gettimeofday(&stime, &tz);
+        rc = cmd_exec_argv(argc - 2, argv + 2);
+        gettimeofday(&etime, &tz);
+        printf("%lld us\n", (long long) diff_timeofday(&etime, &stime));
+        if (rc == RC_USER_HELP)
+            rc = RC_FAILURE;
+    } else if (strncmp(argv[1], "now", 1) == 0) {
+        struct timeval now;
+        gettimeofday(&now, &tz);
+        printf("now=%lu.%06lu sec.usec\n", now.tv_sec, now.tv_usec);
+        rc = RC_SUCCESS;
+    } else {
+        printf("Unknown argument %s\n", argv[1]);
         return (RC_USER_HELP);
     }
-    argv += 2;
-    argc -= 2;
-
-    gettimeofday(&stime, &tz);
-    rc = cmd_exec_argv(argc, argv);
-    gettimeofday(&etime, &tz);
-    printf("%lld us\n", (long long) diff_timeofday(&etime, &stime));
-    if (rc == RC_USER_HELP)
-        rc = RC_FAILURE;
-
     return (rc);
 }
 #endif
