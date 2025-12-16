@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "cmdline.h"
-#include "sfile.h"
+#include "file_access.h"
 #include "cmds.h"
 #include <string.h>
 #ifdef AMIGA

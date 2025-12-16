@@ -1,7 +1,7 @@
 OBJDIR=objs-amiga
-SRCS=main.c cmdline.c cmds.c unix_err.c readline.c sfile.c mem_access.c util.asm
+SRCS=main.c cmdline.c cmds.c unix_err.c readline.c file_access.c mem_access.c util.asm cpu.c cpu_control.c
 OBJS=$(SRCS:"*.c":"$(OBJDIR)/*.o") $(SRCS:"*.asm":"$(OBJDIR)/*.o")
-CFLAGS=-DAMIGA -O2 -//
+CFLAGS=-DAMIGA -DAMIGAOS -DPORT_AMIGA -O2 -//
 #CFLAGS=-DAMIGA -g -Wall -Werror
 #CFLAGS=-DAMIGA -O2 -g -Wall -Werror
 QUIET=@
@@ -25,13 +25,22 @@ $(OBJDIR)/cmds.o: cmds.c Makefile cmdline.h cmds.h
 $(OBJDIR)/readline.o: readline.c readline.h cmdline.h
 	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left)
 
-$(OBJDIR)/sfile.o: sfile.c cmdline.h cmds.h
+$(OBJDIR)/file_access.o: file_access.c cmdline.h cmds.h
 	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left)
 
 $(OBJDIR)/mem_access.o: mem_access.c mem_access.h cmdline.h
 	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left)
 
+$(OBJDIR)/cpu.o: cpu.c cpu.h cmdline.h db_disasm_68k.h
+	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left)
+
+$(OBJDIR)/db_disasm_68k.o: db_disasm_68k.c cpu.h cmdline.h db_disasm_68k.h
+	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left)
+
 $(OBJDIR)/unix_err.o: unix_err.c unix_err.h
+	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left)
+
+$(OBJDIR)/cpu_control.o: cpu_control.c cpu_control.h
 	$(CC) $(CFLAGS) -c %(right:*.c) -o %(left)
 
 $(OBJDIR)/util.o: util.asm DMakefile

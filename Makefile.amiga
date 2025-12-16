@@ -2,20 +2,41 @@ NOW	:= $(shell date)
 DATE    := $(shell date -d '$(NOW)' '+%Y-%m-%d')
 TIME    := $(shell date -d '$(NOW)' '+%H:%M:%S')
 
-OBJDIR	:= objs
+OBJDIR	:= objs-amiga-gcc
 SRCS    := main.c cmdline.c cmds.c readline.c file_access.c mem_access.c \
-           cpu.c db_disasm_x86-32.c db_disasm_x86-64.c version.c
+           cpu.c db_disasm_68k.c unix_err.c cpu_control.c version.c
 OBJS    := $(SRCS:%.c=$(OBJDIR)/%.o)
 CFLAGS  := -DBUILD_DATE=\"$(DATE)\" -DBUILD_TIME=\"$(TIME)\"
-CFLAGS  += -O2 -g -Wall -Werror -Wpedantic -Wundef
+CFLAGS  += -Os -g -Wall -Werror -Wpedantic -Wundef -Wno-error=format -Wno-format
+CFLAGS  += -DAMIGA -DAMIGAOS -mcpu=68060
 #CFLAGS += -g
 QUIET   := @
 #QUIET   :=
-CC	:= cc
+CC      := m68k-amigaos-gcc
+STRIP   := m68k-amigaos-strip
+LDFLAGS := -mcrt=clib2 -lgcc -lc
+
+# If verbose is specified with no other targets, then build everything
+ifeq ($(MAKECMDGOALS),verbose)
+verbose: all
+endif
+ifeq (,$(filter verbose timed, $(MAKECMDGOALS)))
+QUIET   := @
+else
+QUIET   :=
+VERBOSE := -v
+endif
+
+ifeq (, $(shell which $(CC) 2>/dev/null ))
+$(error "No $(CC) in PATH: maybe do PATH=$$PATH:/opt/amiga13/bin")
+endif
+
+all: $(OBJDIR)/med
 
 $(OBJDIR)/med: $(OBJS) | $(OBJDIR)
 	@echo "Creating $@"
-	$(QUIET)$(CC) -o $@ $^
+	$(QUIET)$(CC) -o $@ $^ $(LDFLAGS)
+	$(QUIET)$(STRIP) -o $@.strip $@
 
 define DEPEND_SRC
 # The following line creates a rule for an object file to depend on a
@@ -32,7 +53,7 @@ $(OBJDIR)/file_access.o: cmds.h file_access.h
 $(OBJDIR)/mem_access.o: mem_access.h cmdline.h
 $(OBJDIR)/version.o: version.h $(filter-out $(OBJDIR)/version.o, $(OBJS))
 
-$(OBJS): Makefile cmdline.h | $(OBJDIR)
+$(OBJS): Makefile.amiga cmdline.h | $(OBJDIR)
 	@echo "Creating $@"
 	$(QUIET)$(CC) -o $@ -c $(filter %.c,$^) $(CFLAGS)
 

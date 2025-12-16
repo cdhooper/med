@@ -1,4 +1,5 @@
 *.o
 med
 objs-amiga
+objs-amiga-gcc
 *.uaem

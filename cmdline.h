@@ -12,7 +12,7 @@
 #ifndef _CMDLINE_H
 #define _CMDLINE_H
 
-#ifdef AMIGA
+#ifdef _DCC /* AMIGAOS */
 #include "amiga_stdint.h"
 #else
 #include <stdint.h>
@@ -22,12 +22,16 @@
 
 typedef unsigned int uint;
 
-#ifdef AMIGA
+#ifdef _DCC
 typedef int _Bool;
 #endif
 typedef _Bool bool_t;
+#ifndef FALSE
 #define FALSE 0
+#endif
+#ifndef TRUE
 #define TRUE !FALSE
+#endif
 
 typedef enum {
     RC_SUCCESS   = 0,  /* Successful completion */
