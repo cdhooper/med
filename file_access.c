@@ -3,11 +3,7 @@
 #include "file_access.h"
 #include "cmds.h"
 #include <string.h>
-#ifdef AMIGA
 #include <stdlib.h>
-#else
-#include <malloc.h>
-#endif
 
 fileinfo_t file_track[4];
 

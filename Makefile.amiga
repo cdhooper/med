@@ -1,20 +1,28 @@
-NOW	:= $(shell date)
-DATE    := $(shell date -d '$(NOW)' '+%Y-%m-%d')
-TIME    := $(shell date -d '$(NOW)' '+%H:%M:%S')
-
 OBJDIR	:= objs-amiga-gcc
 SRCS    := main.c cmdline.c cmds.c readline.c file_access.c mem_access.c \
-           cpu.c db_disasm_68k.c unix_err.c cpu_control.c version.c
+           cpu.c db_disasm_68k.c unix_err.c cpu_control.c version.c \
+           pci_access.c printf.c
 OBJS    := $(SRCS:%.c=$(OBJDIR)/%.o)
 CFLAGS  := -DBUILD_DATE=\"$(DATE)\" -DBUILD_TIME=\"$(TIME)\"
 CFLAGS  += -Os -g -Wall -Werror -Wpedantic -Wundef -Wno-error=format -Wno-format
-CFLAGS  += -DAMIGA -DAMIGAOS -mcpu=68060
+CFLAGS  += -mcpu=68060 -DAMIGA -DAMIGAOS -DHAVE_SPACE_PHYS
 #CFLAGS += -g
 QUIET   := @
 #QUIET   :=
 CC      := m68k-amigaos-gcc
 STRIP   := m68k-amigaos-strip
-LDFLAGS := -mcrt=clib2 -lgcc -lc
+LDFLAGS := -mcrt=clib2 -lamiga -lc -lgcc
+#LDFLAGS := -lc
+
+OS   := $(shell uname -s)
+NOW  := $(shell date +%s)
+ifeq ($(OS),Darwin)
+DATE := $(shell date -j -f %s $(NOW)  '+%Y-%m-%d')
+TIME := $(shell date -j -f %s $(NOW)  '+%H:%M:%S')
+else
+DATE := $(shell date -d "@$(NOW)" '+%Y-%m-%d')
+TIME := $(shell date -d "@$(NOW)" '+%H:%M:%S')
+endif
 
 # If verbose is specified with no other targets, then build everything
 ifeq ($(MAKECMDGOALS),verbose)
@@ -35,8 +43,9 @@ all: $(OBJDIR)/med
 
 $(OBJDIR)/med: $(OBJS) | $(OBJDIR)
 	@echo "Creating $@"
-	$(QUIET)$(CC) -o $@ $^ $(LDFLAGS)
-	$(QUIET)$(STRIP) -o $@.strip $@
+	$(QUIET)$(CC) -o $@.unstrip $^ $(LDFLAGS)
+	$(QUIET)$(STRIP) -o $@ $@.unstrip
+	$(QUIET)chmod +x $@
 
 define DEPEND_SRC
 # The following line creates a rule for an object file to depend on a
@@ -45,12 +54,16 @@ $(patsubst %,$(OBJDIR)/%,$(filter-out $(OBJDIR)/%,$(basename $(1)).o)) $(filter 
 endef
 $(foreach SRCFILE,$(SRCS),$(eval $(call DEPEND_SRC,$(SRCFILE))))
 
-$(OBJDIR)/main.o: cmdline.h
-$(OBJDIR)/cmdline.o: cmds.h readline.h
+$(OBJDIR)/main.o: cmdline.h cpu_control.h
+$(OBJDIR)/cmdline.o: cmds.h readline.h cpu.h
 $(OBJDIR)/cmds.o: cmds.h file_access.h
+$(OBJDIR)/cpu.o: cpu.h cpu_control.h
+$(OBJDIR)/cpu_control.o: cpu_control.h
 $(OBJDIR)/readline.o: readline.h cmds.h
 $(OBJDIR)/file_access.o: cmds.h file_access.h
 $(OBJDIR)/mem_access.o: mem_access.h cmdline.h
+$(OBJDIR)/pci_access.o: pci_access.h cmdline.h cpu_control.h
+$(OBJDIR)/printf.o: printf.h
 $(OBJDIR)/version.o: version.h $(filter-out $(OBJDIR)/version.o, $(OBJS))
 
 $(OBJS): Makefile.amiga cmdline.h | $(OBJDIR)

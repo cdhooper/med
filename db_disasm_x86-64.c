@@ -1309,7 +1309,7 @@ db_disasm(loc, altfmt)
 	}
 #endif
 #ifdef PORT_MED
-        db_printf("%8lx:  ", (uint64_t)loc);
+        db_printf("%8lx:  ", (unsigned long)loc);
 #endif
 
 	get_value_inc(inst, loc, 1, FALSE);

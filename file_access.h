@@ -1,5 +1,5 @@
-#ifndef _SFILE_H
-#define _SFILE_H
+#ifndef _FILE_ACCESS_H
+#define _FILE_ACCESS_H
 
 #define HAVE_SPACE_FILE
 

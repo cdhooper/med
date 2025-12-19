@@ -22,18 +22,17 @@
 #ifdef EMBEDDED_CMD
 #include "printf.h"
 #endif
-#ifdef AMIGA
-#include "db_disasm_68k.h"
-#include <exec/types.h>
-#endif
 #if defined(__x86_64__) || defined(__i386__)
 #include "db_disasm_x86.h"
 #endif
 #include "util.h"
 
 #ifdef AMIGA
+#include <exec/types.h>
+#include "db_disasm_68k.h"
 #include "amiga_chipset.h"
 #include "cpu_control.h"
+#include "cpu_fault.h"
 #endif
 
 const char cmd_cpu_help[] =
@@ -91,10 +90,6 @@ write_spin(uint32_t addr, uint mode)
     }
 }
 
-#ifdef _DCC
-#define __asm(x)
-#endif
-
 /*
  * cmd_cpu
  * -------
@@ -133,11 +128,10 @@ show_fault_valid:
 
         if (strcmp(argv[2], "aline") == 0) {
             /* Any instruction whose opcode begins with A */
-            __asm(".word 0xa000");
+            CPU_FAULT_ALINE();
         } else if (strcmp(argv[2], "addr") == 0) {
             /* Branch to unaligned address */
-            __asm("lea.l 0x1(pc),a0\n\t"
-                  "jmp (a0)"::: "a0");
+            CPU_FAULT_ADDR();
         } else if (strcmp(argv[2], "berr") == 0) {
             /* Gary will generate bus fault if address is not claimed by dev */
             *GARY_BTIMEOUT = 0xff;
@@ -145,55 +139,37 @@ show_fault_valid:
             *GARY_BTIMEOUT = 0x7f;
         } else if (strcmp(argv[2], "chk") == 0) {
             /* CHK compares register in range 0..X */
-            __asm("move.l #-1, d0\n\t"
-                  "chk.l  #10, d0"::: "d0");
+            CPU_FAULT_CHK();
         } else if (strcmp(argv[2], "div0") == 0) {
             /* Divide by Zero */
-#ifndef _DCC
-            __asm("move.l #0, d0\n\t"
-                  "divs.w #0, d0"::: "d0", "d1");
-#endif
+            CPU_FAULT_DIV0();
         } else if (strcmp(argv[2], "fline") == 0) {
             /* Any instruction whose opcode begins with F */
-            __asm(".word 0xf000");
-            __asm(".word 0x0000");
+            CPU_FAULT_FLINE();
         } else if (strcmp(argv[2], "fmt") == 0) {
             /* Push an invalid FPU frame format and attempt to restore it */
-            __asm("move.l #0xff000000, -(sp)");
-            __asm("frestore (sp)+");
+            CPU_FAULT_FMT();
         } else if (strcmp(argv[2], "fdiv") == 0) {
             /* Generate FPU Divide by Zero Error */
-            __asm("fmove.l #0x0400, fpcr");
-            __asm("fmove.l #0x0000, fpsr");
-            __asm("fmove.l #42, fp0");   // FP0 = 42
-            __asm("fmove.l #0, fp1");    // FP1 = 0
-            __asm("fdiv.x fp1, fp0");
+            CPU_FAULT_FDIV();
             (void) fpu_get_fpsr();
         } else if (strcmp(argv[2], "fpoe") == 0) {
             /* Generate FPCP Operand Error */
-            __asm("fmove.l #0x2000, fpcr");
-            __asm("fmove.l fp0,d0");
-
-            __asm("move.l #0x00000000, -(sp)");
-            __asm("frestore (sp)+");
+            CPU_FAULT_FPCP();
         } else if (strcmp(argv[2], "fpuc") == 0) {
             /* Clear FPU fault state */
-            __asm("move.l #0x00000000, -(sp)");
-            __asm("frestore (sp)+");
+            CPU_FAULT_FPUC();
         } else if (strncmp(argv[2], "illegal", 3) == 0) {
             /* Illegal instruction */
-            __asm("illegal");
+            CPU_FAULT_ILL_INST();
         } else if (strcmp(argv[2], "priv") == 0) {
             /* Drop to user mode and issue STOP, which requires supervisor */
-            __asm("move.w #0, sr");
-            __asm("stop #0x2700");
+            CPU_FAULT_PRIV();
         } else if (strcmp(argv[2], "trap") == 0) {
             /* CPU TRAP */
-            __asm("trap #7");
+            CPU_FAULT_TRAP();
         } else if (strcmp(argv[2], "trapv") == 0) {
-            __asm("move.l #0x7fffffff, d0\n\t"
-                  "addq.l #2, d0\n\t"
-                  "trapv"::: "d0");
+            CPU_FAULT_TRAPV();
         } else {
             invalid = 1;
         }
