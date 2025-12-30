@@ -164,12 +164,17 @@ typedef unsigned char * CONST_STRPTR;
 
 #define MAYTAY_PCI_ADDR_CONFIG  0x000f0000
 
+#define BRIDGE_TYPE_UNKNOWN   0
+#define BRIDGE_TYPE_MAYTAY    1
+#define BRIDGE_TYPE_FIRESTORM 2
+#define BRIDGE_TYPE_AMIGAPCI  3
+
 static uint8_t *bridge_pci0_base;
 static uint8_t *bridge_pci1_base;
 static APTR     bridge_io_base;
 static APTR     bridge_mem_base;
 static APTR     bridge_control_reg;
-static uint8_t  bridge_is_firestorm = 0;
+static uint8_t  bridge_type = BRIDGE_TYPE_UNKNOWN;
 static uint16_t bridge_zorro_mfg;
 static uint16_t bridge_zorro_prod;
 static struct ConfigDev *zorro_cdev = NULL;
@@ -202,7 +207,7 @@ find_zorro_pci_bridge(uint bus)
             bridge_io_base = base;
             bridge_mem_base = base;
             bridge_control_reg = NULL;
-            bridge_is_firestorm = 0;
+            bridge_type = BRIDGE_TYPE_MAYTAY;
             goto done;
         }
     }
@@ -219,7 +224,10 @@ find_zorro_pci_bridge(uint bus)
             bridge_io_base = base + FS_PCI_ADDR_IO;
             bridge_mem_base = base;
             bridge_control_reg = base + FS_PCI_ADDR_CONTROL;
-            bridge_is_firestorm++;
+            if (base == ADDR8(0x80000000))
+                bridge_type = BRIDGE_TYPE_AMIGAPCI;
+            else
+                bridge_type = BRIDGE_TYPE_FIRESTORM;
             break;
         }
     }
@@ -247,8 +255,21 @@ check_pci_init(void)
 static APTR
 pci_cfg_base(uint bus, uint dev, uint func, uint off)
 {
-    if (bus == 0)
-        return (bridge_pci0_base + (0x10000 << dev) + (func << 8) + off);
+    if (bus == 0) {
+        if (bridge_pci0_base == NULL)
+            return (NULL);
+        if (dev <= 3)
+            return (bridge_pci0_base + (0x10000 << dev) + (func << 8) + off);
+
+        if ((dev == 4) && (bridge_type == BRIDGE_TYPE_AMIGAPCI)) {
+            /* Only AmigaPCI has 4 slots */
+            return (bridge_pci0_base + 0x30000 + (func << 8) + off);
+        } else {
+            return (bridge_pci0_base);  // Fail with no slot selected
+        }
+    }
+    if (bridge_pci1_base == NULL)
+        return (NULL);
     return (bridge_pci1_base + (bus << 16) + (dev << 11) + (func << 8) + off);
 }
 
