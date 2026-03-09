@@ -4,7 +4,7 @@ SRCS    := main.c cmdline.c cmds.c readline.c file_access.c mem_access.c \
            pci_access.c printf.c
 OBJS    := $(SRCS:%.c=$(OBJDIR)/%.o)
 CFLAGS  := -DBUILD_DATE=\"$(DATE)\" -DBUILD_TIME=\"$(TIME)\"
-CFLAGS  += -Os -g -Wall -Werror -Wpedantic -Wundef -Wno-error=format -Wno-format
+CFLAGS  += -Os -g -Wall -Werror -Wpedantic -Wundef -Wno-error=format -Wno-format -fno-strict-aliasing
 CFLAGS  += -mcpu=68060 -DAMIGA -DAMIGAOS -DHAVE_SPACE_PHYS
 #CFLAGS += -g
 QUIET   := @
