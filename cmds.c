@@ -1674,20 +1674,24 @@ show_patterns:
                         for (pos = 0; pos < width; pos++)
                             buf[pos] = (uint8_t) value;
                         break;
-                    case 2:
-                        *(uint16_t *)buf = (uint16_t) value;
+                    case 2: {
+                        uint16_t val16 = (uint16_t) value;
+                        memcpy(buf, &val16, sizeof (val16));
                         break;
+                    }
                     default:
-                    case 4:
+                    case 4: {
+                        uint32_t val32 = (uint32_t) value;
 #ifdef IS_BIG_ENDIAN
-                        *(uint32_t *)(buf + width - 4) = (uint32_t) value;
+                        memcpy(buf + width - 4, &val32, sizeof (val32));
                         if (width > 4)
                             memset(buf, 0, width - 4);
 #else
-                        *(uint32_t *)buf = (uint32_t) value;
+                        memcpy(buf, &val32, sizeof (val32));
                         if (width > 4)
                             memset(buf + 4, 0, width - 4);
 #endif
+                    }
                         break;
                 }
                 if (flag_S) {
@@ -1725,8 +1729,10 @@ show_patterns:
             }
             case PATT_RAND: {
                 uint swidth;
-                for (swidth = 0; swidth < width; swidth += 4)
-                    *(uint32_t *) (buf + swidth) = rand32();
+                for (swidth = 0; swidth < width; swidth += 4) {
+                    uint32_t rval = rand32();
+                    memcpy(buf + swidth, &rval, sizeof (rval));
+                }
                 break;
             }
             case PATT_STROBE: {
@@ -1895,8 +1901,10 @@ show_patterns:
                 switch (testmode) {
                     case TEST_RAND: {
                         uint swidth;
-                        for (swidth = 0; swidth < width; swidth += 4)
-                            *(uint32_t *) (buf + swidth) = rand32();
+                        for (swidth = 0; swidth < width; swidth += 4) {
+                            uint32_t rval = rand32();
+                            memcpy(buf + swidth, &rval, sizeof (rval));
+                        }
                         break;
                     }
                     case TEST_WALK0: {
