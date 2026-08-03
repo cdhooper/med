@@ -1,3 +1,7 @@
+#
+# Makefile to build med for Unix
+#
+
 OBJDIR	:= objs
 SRCS    := main.c cmdline.c cmds.c readline.c file_access.c mem_access.c \
            cpu.c db_disasm_x86-32.c db_disasm_x86-64.c version.c \
@@ -12,13 +16,17 @@ CC	:= cc
 OS   := $(shell uname -s)
 NOW  := $(shell date +%s)
 ifeq ($(OS),Darwin)
-DATE := $(shell date -j -f %s $(NOW)  '+%Y-%m-%d')
-TIME := $(shell date -j -f %s $(NOW)  '+%H:%M:%S')
-OBJDIR := $(OBJDIR).mac
-CFLAGS += -DOSX
+    DATE := $(shell date -j -f %s $(NOW)  '+%Y-%m-%d')
+    TIME := $(shell date -j -f %s $(NOW)  '+%H:%M:%S')
+    OBJDIR := objs.mac
+    CFLAGS += -DOSX
 else
-DATE := $(shell date -d "@$(NOW)" '+%Y-%m-%d')
-TIME := $(shell date -d "@$(NOW)" '+%H:%M:%S')
+    DATE := $(shell date -d "@$(NOW)" '+%Y-%m-%d')
+    TIME := $(shell date -d "@$(NOW)" '+%H:%M:%S')
+    ifeq ($(OS),Linux)
+        UNAME_M := $(shell uname -m)
+        OBJDIR := objs.$(UNAME_M)
+    endif
 endif
 
 # If verbose is specified with no other targets, then build everything
@@ -32,6 +40,12 @@ QUIET   :=
 VERBOSE := -v
 endif
 
+ifeq (,$(VER))
+VERSION := $(shell awk '/Version/{print $$2}' version.c)
+else
+VERSION := $(VER)
+endif
+RELEASE_DIR := release/med_$(VERSION)
 OBJS    := $(SRCS:%.c=$(OBJDIR)/%.o)
 
 all: $(OBJDIR)/med
@@ -60,8 +74,35 @@ $(OBJS): Makefile cmdline.h | $(OBJDIR)
 	@echo "Creating $@"
 	$(QUIET)$(CC) -o $@ -c $(filter %.c,$^) $(CFLAGS)
 
-$(OBJDIR):
-	mkdir -p $@
+$(OBJDIR) $(RELEASE_DIR):
+	@mkdir -p $@
 
 clean:
 	rm -f $(OBJS)
+
+BIN_MACOS  := objs.mac/med
+BIN_X86_64 := objs.x86_64/med
+BIN_AMIGA  := objs.amiga-gcc/med
+BIN_PI32   := objs.armv7l/med
+
+ifneq (,$(wildcard $(RELEASE_DIR)))
+release:
+	@echo $(RELEASE_DIR) already exists
+else
+release: $(RELEASE_DIR)
+	@echo Building $(RELEASE_DIR)
+ifneq (,$(wildcard $(BIN_MACOS)))
+	@cp -p $(BIN_MACOS) $(RELEASE_DIR)/med.macos
+endif
+ifneq (,$(wildcard $(BIN_X86_64)))
+	@cp -p $(BIN_X86_64) $(RELEASE_DIR)/med.x86_64
+endif
+ifneq (,$(wildcard $(BIN_AMIGA)))
+	@cp -p $(BIN_AMIGA) $(RELEASE_DIR)/med.amiga
+endif
+ifneq (,$(wildcard $(BIN_PI32)))
+	@cp -p $(BIN_PI32) $(RELEASE_DIR)/med.pi32
+endif
+endif
+
+.PHONY: all clean release

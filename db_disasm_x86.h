@@ -1,5 +1,6 @@
 #ifndef _DB_DISASM_X86_H
 #define _DB_DISASM_X86_H
+#define _DB_DISASM
 
 typedef int      boolean_t;
 typedef uint64_t db_addr_t;

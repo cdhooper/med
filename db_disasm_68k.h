@@ -30,6 +30,9 @@
  * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef _DB_DISASM
+#define _DB_DISASM
+
 #ifdef _DCC /* AMIGAOS */
 #include "amiga_stdint.h"
 #else
@@ -436,3 +439,5 @@ typedef struct dis_buffer dis_buffer_t;
 #endif
 typedef uintptr_t      db_addr_t;
 db_addr_t db_disasm(db_addr_t loc, int moto_syntax);
+
+#endif /* _DB_DISASM */

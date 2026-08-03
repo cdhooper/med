@@ -1,4 +1,4 @@
-OBJDIR=objs-amiga
+OBJDIR=objs.amiga-dice
 SRCS=main.c cmdline.c cmds.c unix_err.c readline.c file_access.c mem_access.c util.asm cpu.c cpu_control.c pci_access.c
 OBJS=$(SRCS:"*.c":"$(OBJDIR)/*.o") $(SRCS:"*.asm":"$(OBJDIR)/*.o")
 CFLAGS=-DAMIGA -DAMIGAOS -DPORT_AMIGA -DHAVE_SPACE_PHYS -O2 -//

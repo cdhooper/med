@@ -1,4 +1,4 @@
-OBJDIR	:= objs-amiga-gcc
+OBJDIR	:= objs.amiga-gcc
 SRCS    := main.c cmdline.c cmds.c readline.c file_access.c mem_access.c \
            cpu.c db_disasm_68k.c unix_err.c cpu_control.c version.c \
            pci_access.c printf.c

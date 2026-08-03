@@ -268,7 +268,7 @@ pci_cfg_base(uint bus, uint dev, uint func, uint off)
             return (bridge_pci0_base);  // Fail with no slot selected
         }
     }
-    if (bridge_pci1_base == NULL)
+    if ((bridge_pci1_base == NULL) || (bus > 15))
         return (NULL);
     return (bridge_pci1_base + (bus << 16) + (dev << 11) + (func << 8) + off);
 }

@@ -1,5 +1,3 @@
-*.o
-med
-objs-amiga
-objs-amiga-gcc
+objs.*
+release
 *.uaem

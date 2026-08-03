@@ -35,6 +35,8 @@
 #include "cpu_fault.h"
 #endif
 
+#include "db_disasm_generic.h"
+
 const char cmd_cpu_help[] =
 "cpu fault <type>      - cause a CPU fault\n"
 #ifndef AMIGAOS
@@ -438,7 +440,7 @@ cmd_dis(int argc, char * const *argv)
         }
         cmd++;
     }
-#ifdef AMIGA
+#if defined(AMIGA) || defined(_DB_DISASM_GENERIC)
     (void) mode;
 #endif
 
