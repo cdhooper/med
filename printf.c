@@ -94,48 +94,17 @@ const uint8_t flag_output = 1;
 int
 putchar(int ch)
 {
-#ifdef USE_SERIAL_OUTPUT
-#ifdef ROMFS
-    if (flag_output)
-        RawPutChar(ch);
-#else
-    if (flag_output == 1) {
-        FPutC(Output(), ch);
-    } else if (flag_output) {
-        RawPutChar(ch);
-    }
-#endif
-#endif
+    FPutC(Output(), ch);
+    Flush(Output());
     return (ch);
 }
 
 int
 puts(const char *str)
 {
-#ifdef USE_SERIAL_OUTPUT
-#ifdef ROMFS
-    if (flag_output) {
-        while (*str != '\0') {
-            RawPutChar(*str);
-            str++;
-        }
-        RawPutChar('\n');
-    }
-#else
-    if (flag_output == 1) {
-        PutStr((CONST_STRPTR)str);
-        FPutC(Output(), '\n');
-    } else if (flag_output) {
-        while (*str != '\0') {
-            RawPutChar(*str);
-            str++;
-        }
-        RawPutChar('\n');
-    }
-#endif
-#else
-    (void) str;
-#endif
+    PutStr((CONST_STRPTR)str);
+    FPutC(Output(), '\n');
+    Flush(Output());
     return (0);
 }
 
@@ -162,7 +131,7 @@ static void
 put(int ch, buf_t *desc)
 {
     if (desc == NULL) {
-        putchar(ch);
+        FPutC(Output(), ch);
     } else if (desc->buf_cur < desc->buf_end) {
         *(desc->buf_cur)++ = (char) ch;
     }
@@ -316,8 +285,11 @@ kdoprnt(buf_t *desc, const char *fmt, va_list ap)
 
     for (;;) {
         while ((ch = *fmt++) != '%') {
-            if (ch == '\0')
+            if (ch == '\0') {
+                if (desc == NULL)
+                    Flush(Output());
                 return (ret);
+            }
             put(ch, desc);
             ret++;
         }
@@ -472,8 +444,11 @@ do_hex:
                 ret += kprintn(desc, ul, 16, flags, width, 0);
                 break;
             default:
-                if (ch == '\0')
+                if (ch == '\0') {
+                    if (desc == NULL)
+                        Flush(Output());
                     return (ret);
+                }
                 put(ch, desc);
                 ret++;
                 break;

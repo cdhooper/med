@@ -3,8 +3,7 @@ SRCS    := main.c cmdline.c cmds.c readline.c file_access.c mem_access.c \
            cpu.c db_disasm_68k.c unix_err.c cpu_control.c version.c \
            pci_access.c printf.c
 OBJS    := $(SRCS:%.c=$(OBJDIR)/%.o)
-CFLAGS  := -DBUILD_DATE=\"$(DATE)\" -DBUILD_TIME=\"$(TIME)\"
-CFLAGS  += -Os -g -Wall -Werror -Wpedantic -Wundef -Wno-error=format -Wno-format -fno-strict-aliasing
+CFLAGS  := -Os -g -Wall -Werror -Wpedantic -Wundef -Wno-error=format -Wno-format -fno-strict-aliasing
 CFLAGS  += -mcpu=68060 -DAMIGA -DAMIGAOS -DHAVE_SPACE_PHYS
 #CFLAGS += -g
 QUIET   := @
@@ -15,14 +14,10 @@ LDFLAGS := -mcrt=clib2 -lamiga -lc -lgcc
 #LDFLAGS := -lc
 
 OS   := $(shell uname -s)
-NOW  := $(shell date +%s)
-ifeq ($(OS),Darwin)
-DATE := $(shell date -j -f %s $(NOW)  '+%Y-%m-%d')
-TIME := $(shell date -j -f %s $(NOW)  '+%H:%M:%S')
-else
-DATE := $(shell date -d "@$(NOW)" '+%Y-%m-%d')
-TIME := $(shell date -d "@$(NOW)" '+%H:%M:%S')
-endif
+BUILD_TIMESTAMP := $(shell date '+%Y-%m-%d %H:%M:%S')
+DATE := $(word 1,$(BUILD_TIMESTAMP))
+TIME := $(word 2,$(BUILD_TIMESTAMP))
+CFLAGS += -DBUILD_DATE=\"$(DATE)\" -DBUILD_TIME=\"$(TIME)\"
 
 # If verbose is specified with no other targets, then build everything
 ifeq ($(MAKECMDGOALS),verbose)

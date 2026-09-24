@@ -32,12 +32,14 @@
 #define MEM_FAULT_CAPTURE                                   \
     struct Task *thistask = (struct Task *) FindTask(NULL); \
     uint8_t old_berr_dsack = *ADDR8(AMIGA_BERR_DSACK);      \
-    *ADDR8(AMIGA_BERR_DSACK) &= ~BIT(7);                    \
+    if (addr != AMIGA_BERR_DSACK)                           \
+        *ADDR8(AMIGA_BERR_DSACK) &= ~BIT(7);                \
     old_TrapCode = thistask->tc_TrapCode;                   \
     thistask->tc_TrapCode = (void *)(uintptr_t) trap_handler
 #define MEM_FAULT_RESTORE                                   \
     thistask->tc_TrapCode = old_TrapCode;                   \
-    *ADDR8(AMIGA_BERR_DSACK) = old_berr_dsack
+    if (addr != AMIGA_BERR_DSACK)                           \
+        *ADDR8(AMIGA_BERR_DSACK) = old_berr_dsack
 void trap_handler(void);
 APTR old_TrapCode;
 #else
@@ -294,37 +296,27 @@ __asm("cmpi.l  #2,(sp)  \n"            // is this bus error?
       "tst.l   _old_TrapCode  \n"      // is there another trap handler ?
       "beq.s   endtrap        \n"      // no, so we'll exit
       "move.l  _old_TrapCode,-(sp) \n" // yes, go on to old TrapCode
-      "rts                    \n"      // jumps to old TrapCode
+      "rts");                          // jumps to old TrapCode
 
-      "endtrap:               \n"
-      "addq    #4,sp          \n"      // remove exception number from SSP
-      "rte                    \n"      // return from exception
+__asm("endtrap:                    \n"
+      "addq    #4,sp               \n"  // Remove exception number from SSP
+      "rte");                           // Return from exception
 
-      "addr_err:              \n"
-      "bus_err:               \n"
-      "add.l   #1,_mem_fault_count \n" // increment fault count
-      "addq.l  #6,sp               \n" // remove exception number from SSP
-      "addq.l  #2,(sp)             \n" // Skip bad instruction
-      "subq.l  #2,sp               \n"
-      "addq    #4,sp               \n" // remove exception number from SSP
-      "rte                         \n" // return from exception
+__asm("addr_err:                   \n"
+      "bus_err:                    \n"
+      "add.l   #1,_mem_fault_count \n"  // Increment fault count
+      "addq.l  #2,6(sp)            \n"  // Skip bad instruction
+      "addq    #8,sp               \n"  // Remove exception number from SSP
+      "rte");                           // Return from exception
 
-      "ill_inst:                   \n"
-      "add.l   #1,_mem_fault_count");  // increment fault count
+__asm("ill_inst:                   \n"
+      "add.l   #1,_mem_fault_count \n"  // Increment fault count
+      "addq.l  #2,6(sp)            \n"  // Skip bad instruction
+      "addq.l  #4,sp               \n"  // Remove exception number from SSP
+      "rte");                           // Return from exception
 
-__asm("addq.l  #2,6(sp)            \n" // Skip bad instruction
-      "addq.l  #4,sp");                // Remove exception number from SSP
-
-#if 0
-     /* Alternative to the above */
-__asm("subq.l  #2,sp               \n" // remove exception number from SSP
-      "addq.l  #2,8(sp)            \n" // Skip bad instruction
-      "addq.l  #6,sp");
-#endif
-__asm("rte                         \n" // return from exception
-
-      "div0_err:                   \n"
-      "add.l   #1,_mem_fault_count \n" // increment fault count
-      "addq    #4,sp               \n" // remove exception number from SSP
+__asm("div0_err:                   \n"
+      "add.l   #1,_mem_fault_count \n"  // Increment fault count
+      "addq    #4,sp               \n"  // Remove exception number from SSP
       "rte");
 #endif /* AMIGAOS && !_DCC */
